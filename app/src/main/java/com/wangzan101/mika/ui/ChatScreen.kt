@@ -26,9 +26,11 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -91,11 +93,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -470,22 +474,32 @@ private fun LazyListState.nearTail(thresholdPx: Int): Boolean {
 
 // ---------- 空对话 ----------
 
-/** 问候、一句「想让 Mika 做什么？」和一列示例;点示例把它填进输入框,改好了再发。 */
+/** 问候、一句「想让 Mika 做什么？」和一列示例;点示例把它填进输入框,改好了再发,长按可以改这一列。 */
 @Composable
 private fun EmptyState(conversation: String?, onPick: (String) -> Unit) {
     val c = MikaTheme.colors
     val hour = remember(conversation) { LocalTime.now().hour }
+    val context = LocalContext.current
+    val store = remember { ExampleStore(context) }
+    var examples by remember { mutableStateOf(store.load()) }
+    var acting by remember { mutableStateOf<Int?>(null) }
     Column(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 52.dp)) {
             Text(ChatCopy.greeting(hour), style = MikaType.LargeTitle, color = c.ink)
             Text(ChatCopy.EMPTY_PROMPT, Modifier.padding(top = 6.dp), style = EmptyLead, color = c.ink2)
         }
         MikaCard(Modifier.padding(top = 28.dp)) {
-            ChatCopy.examples.forEachIndexed { i, ex ->
-                ExampleRow(exampleIcon(ex.kind), ex.text, first = i == 0) { onPick(ex.text) }
+            examples.forEachIndexed { i, ex ->
+                ExampleRow(exampleIcon(ex.kind), ex.text, first = i == 0, onLongClick = { acting = i }) { onPick(ex.text) }
             }
         }
     }
+    ExampleEditor(
+        examples, acting,
+        onClose = { acting = null },
+        onChange = { examples = it; store.save(it) },
+        onReset = { store.reset(); examples = store.load() },
+    )
 }
 
 private fun exampleIcon(kind: ChatCopy.ExampleKind): ImageVector = when (kind) {
@@ -494,25 +508,34 @@ private fun exampleIcon(kind: ChatCopy.ExampleKind): ImageVector = when (kind) {
     ChatCopy.ExampleKind.File -> MikaIcons.Doc
     ChatCopy.ExampleKind.Schedule -> MikaIcons.Clock
     ChatCopy.ExampleKind.Device -> MikaIcons.Alarm
+    ChatCopy.ExampleKind.Custom -> MikaIcons.Spark
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ExampleRow(icon: ImageVector, text: String, first: Boolean, onClick: () -> Unit) {
+private fun ExampleRow(icon: ImageVector, text: String, first: Boolean, onLongClick: () -> Unit, onClick: () -> Unit) {
     val c = MikaTheme.colors
+    val haptic = LocalHapticFeedback.current
     Row(
         Modifier.fillMaxWidth()
             .then(if (first) Modifier else Modifier.drawBehind {
                 val y = 0.25.dp.toPx()
                 drawLine(c.hair, Offset(52.dp.toPx(), y), Offset(size.width, y), strokeWidth = 0.5.dp.toPx())
             })
-            .clickable(role = Role.Button, onClick = onClick)
+            .combinedClickable(
+                role = Role.Button,
+                onLongClickLabel = stringResource(R.string.chat_example_edit),
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() },
+                onClick = onClick,
+            )
             .heightIn(min = 56.dp)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Icon(icon, null, Modifier.size(MikaSize.Icon), tint = c.ink2)
-        Text(text, Modifier.weight(1f), style = ExampleText, color = c.ink)
+        // 用户写的可能很长,首页只露开头;点了照样填入全文
+        Text(text, Modifier.weight(1f), style = ExampleText, color = c.ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
     }
 }
 

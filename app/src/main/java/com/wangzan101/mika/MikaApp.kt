@@ -316,11 +316,31 @@ class MikaApp : Application(), WebOwner, SandboxOwner, TaskEnvironment.Owner, Ph
         )
     }
 
+    /** 备份的导出和导入跑在这里:不随页面离开而中断,导入不会停在「准备好了却没重启」。 */
+    val backupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 这次启动换上了导入的备份没有;见 [attachBaseContext]。 */
+    private var restored: com.wangzan101.mika.backup.RestoreOutcome? = null
+
+    /** 导入备份要在任何东西打开这些文件之前换上,这里比 ContentProvider 和 [onCreate] 都早。旧文件在后台删。 */
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(base)
+        restored = runCatching {
+            com.wangzan101.mika.backup.BackupRestore.applyPending(com.wangzan101.mika.backup.AndroidBackupEnv(base)) { cleanup ->
+                kotlin.concurrent.thread(name = "backup-cleanup") { runCatching(cleanup) }
+            }
+        }.onFailure { Log.w("MikaBackup", "could not apply the imported backup", it) }.getOrNull()
+    }
+
     override fun onCreate() {
         super.onCreate()
+        restored?.takeIf { it.setLanguage }?.let { AppLanguage.set(this, AppLanguage.fromTag(it.language)) }
         // 界面以外的文字(通知、服务、悬浮胶囊)按 App 语言取
         AppLanguage.applyDefaultLocale(this)
         UiText.source = ResourceTexts { AppLanguage.resources(this) }
+        restored?.let {
+            android.widget.Toast.makeText(this, if (it.ok) R.string.backup_restored else R.string.backup_restore_failed, android.widget.Toast.LENGTH_LONG).show()
+        }
         registerActivityLifecycleCallbacks(foreground)
         // 设置 › 网络代理:Mika 自己的连接从第一个请求起就按它走;SOCKS 代理的账号密码经全进程的认证器给
         com.wangzan101.mika.settings.NetProxyStore.get(this)

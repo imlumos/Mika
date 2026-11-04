@@ -12,6 +12,12 @@
     <string name="chat_example_music">Abre Qishui Music y mira anuncios para conseguir 24 horas de VIP</string>
     <string name="chat_example_alarms">Pon alarmas mañana por la mañana a las 9:40, 9:50 y 10:00</string>
     <string name="chat_example_creator">Abre Xiaohongshu y resume las publicaciones del creador 王赞不赞</string>
+    <string name="chat_example_edit">Editar acción rápida</string>
+    <string name="chat_example_add">Añadir acción rápida</string>
+    <string name="chat_example_move_up">Subir</string>
+    <string name="chat_example_move_down">Bajar</string>
+    <string name="chat_example_reset">Restaurar valores predeterminados</string>
+    <string name="chat_example_reset_message">Se borrarán las acciones rápidas que hayas añadido o cambiado.</string>
     <string name="chat_working_on">Trabajando en %1$s</string>
     <string name="chat_working">Trabajando</string>
     <string name="chat_wait_previous_task">Empieza cuando termine la tarea anterior</string>

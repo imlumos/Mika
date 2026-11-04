@@ -19,17 +19,21 @@ object ChatCopy {
 
     val EMPTY_PROMPT get() = tr(R.string.chat_empty_prompt)
 
-    /** 空对话里的示例;点一下填进输入框,用户改好了再发。[kind] 决定配哪个线条图标。 */
-    enum class ExampleKind { App, Web, File, Schedule, Device }
-    data class Example(val kind: ExampleKind, val text: String)
+    /**
+     * 空对话里的示例;点一下填进输入框,用户改好了再发。[kind] 决定配哪个线条图标。
+     * 内置的有 [id],用户写的([ExampleKind.Custom])没有;存取见 [ExampleList]。
+     */
+    enum class ExampleKind { App, Web, File, Schedule, Device, Custom }
+    data class Example(val kind: ExampleKind, val text: String, val id: String? = null)
 
+    /** 内置的示例。id 存在用户的列表里,不能改。 */
     val examples get() = listOf(
-        Example(ExampleKind.App, tr(R.string.chat_example_message)),
-        Example(ExampleKind.App, tr(R.string.chat_example_group_summary)),
-        Example(ExampleKind.Web, tr(R.string.chat_example_jobs)),
-        Example(ExampleKind.App, tr(R.string.chat_example_music)),
-        Example(ExampleKind.Device, tr(R.string.chat_example_alarms)),
-        Example(ExampleKind.App, tr(R.string.chat_example_creator)),
+        Example(ExampleKind.App, tr(R.string.chat_example_message), "message"),
+        Example(ExampleKind.App, tr(R.string.chat_example_group_summary), "group_summary"),
+        Example(ExampleKind.Web, tr(R.string.chat_example_jobs), "jobs"),
+        Example(ExampleKind.App, tr(R.string.chat_example_music), "music"),
+        Example(ExampleKind.Device, tr(R.string.chat_example_alarms), "alarms"),
+        Example(ExampleKind.App, tr(R.string.chat_example_creator), "creator"),
     )
 
     /** 对话页顶栏的标题:固定是 App 名;副标题说此刻在做什么。 */

@@ -12,6 +12,12 @@
     <string name="chat_example_music">幫我開啟汽水音樂，看廣告領取24小時聽歌VIP會員</string>
     <string name="chat_example_alarms">幫我訂明天早上9:40、9:50、10:00 的鬧鐘</string>
     <string name="chat_example_creator">開啟小紅書，幫我總結一下博主王赞不赞的內容</string>
+    <string name="chat_example_edit">編輯快捷操作</string>
+    <string name="chat_example_add">新增快捷操作</string>
+    <string name="chat_example_move_up">上移</string>
+    <string name="chat_example_move_down">下移</string>
+    <string name="chat_example_reset">恢復預設</string>
+    <string name="chat_example_reset_message">你新增和改過的快捷操作都會被清除。</string>
     <string name="chat_working_on">正在操作%1$s</string>
     <string name="chat_working">正在處理</string>
     <string name="chat_wait_previous_task">等前一個任務做完再開始</string>

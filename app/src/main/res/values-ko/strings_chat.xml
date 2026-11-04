@@ -12,6 +12,12 @@
     <string name="chat_example_music">Qishui Music을 열어서 광고를 보고 24시간 VIP를 받아 줘</string>
     <string name="chat_example_alarms">내일 아침 9시 40분, 9시 50분, 10시에 알람을 맞춰 줘</string>
     <string name="chat_example_creator">Xiaohongshu를 열어서 크리에이터 王赞不赞의 게시물을 요약해 줘</string>
+    <string name="chat_example_edit">빠른 작업 편집</string>
+    <string name="chat_example_add">빠른 작업 추가</string>
+    <string name="chat_example_move_up">위로 이동</string>
+    <string name="chat_example_move_down">아래로 이동</string>
+    <string name="chat_example_reset">기본값으로 복원</string>
+    <string name="chat_example_reset_message">추가하거나 변경한 빠른 작업이 지워집니다.</string>
     <string name="chat_working_on">%1$s에서 작업 중</string>
     <string name="chat_working">작업 중</string>
     <string name="chat_wait_previous_task">이전 작업이 끝나면 시작해요</string>

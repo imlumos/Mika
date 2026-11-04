@@ -12,6 +12,12 @@
     <string name="chat_example_music">Qishui Music を開いて、広告を見て VIP を 24 時間分もらって</string>
     <string name="chat_example_alarms">明日の朝 9:40、9:50、10:00 にアラームをセットして</string>
     <string name="chat_example_creator">小紅書(Xiaohongshu)を開いて、クリエイター 王赞不赞 の投稿をまとめて</string>
+    <string name="chat_example_edit">クイック操作を編集</string>
+    <string name="chat_example_add">クイック操作を追加</string>
+    <string name="chat_example_move_up">上へ移動</string>
+    <string name="chat_example_move_down">下へ移動</string>
+    <string name="chat_example_reset">デフォルトに戻す</string>
+    <string name="chat_example_reset_message">追加または変更したクイック操作は消去されます。</string>
     <string name="chat_working_on">%1$s で作業中</string>
     <string name="chat_working">作業中</string>
     <string name="chat_wait_previous_task">前のタスクが終わってから始まります</string>

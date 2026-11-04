@@ -12,6 +12,12 @@
     <string name="chat_example_music">Buka Qishui Music dan tonton iklan untuk dapat VIP 24 jam</string>
     <string name="chat_example_alarms">Pasang alarm pukul 9.40, 9.50, dan 10.00 besok pagi</string>
     <string name="chat_example_creator">Buka Xiaohongshu dan ringkas postingan kreator 王赞不赞</string>
+    <string name="chat_example_edit">Edit tindakan cepat</string>
+    <string name="chat_example_add">Tambah tindakan cepat</string>
+    <string name="chat_example_move_up">Pindahkan ke atas</string>
+    <string name="chat_example_move_down">Pindahkan ke bawah</string>
+    <string name="chat_example_reset">Pulihkan default</string>
+    <string name="chat_example_reset_message">Tindakan cepat yang Anda tambahkan atau ubah akan dihapus.</string>
     <string name="chat_working_on">Bekerja di %1$s</string>
     <string name="chat_working">Bekerja</string>
     <string name="chat_wait_previous_task">Dimulai setelah tugas sebelumnya selesai</string>
