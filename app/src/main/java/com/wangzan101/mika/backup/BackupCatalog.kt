@@ -88,12 +88,16 @@ internal object BackupCatalog {
         // 语言在安卓 13 起存在系统里,单独写进备份说明
         "app_language",
         "task_recovery", "triggers", "attach", "onboarding", "voice_input",
+        // 给 Mika 放 root 权限,要用户在这台手机上重新授权
+        "root",
     )
 
     /** 明确不备份的文件:运行中的账本、缓存,和导入时另行重置的审批模式。 */
     val excludedFiles: Set<String> = setOf(
         APPROVALS, "children-v3.json", "runs-v3.json", "outbox-v3.json", "update-v1.json",
         "settings/mcp-usb.json", "sandbox", "harness-traces", "adb",
+        // 微信绑定能从外面给手机派任务,要用户重新扫码
+        "wechat",
     )
 
     /** 路径属于哪一项;不在白名单里、或想跳出目录的返回 null。 */

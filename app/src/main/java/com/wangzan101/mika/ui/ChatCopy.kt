@@ -28,12 +28,12 @@ object ChatCopy {
 
     /** 内置的示例。id 存在用户的列表里,不能改。 */
     val examples get() = listOf(
-        Example(ExampleKind.App, tr(R.string.chat_example_message), "message"),
+        Example(ExampleKind.App, tr(R.string.chat_example_follow), "follow"),
         Example(ExampleKind.App, tr(R.string.chat_example_group_summary), "group_summary"),
         Example(ExampleKind.Web, tr(R.string.chat_example_jobs), "jobs"),
-        Example(ExampleKind.App, tr(R.string.chat_example_music), "music"),
+        Example(ExampleKind.App, tr(R.string.chat_example_multi_step), "multi_step"),
         Example(ExampleKind.Device, tr(R.string.chat_example_alarms), "alarms"),
-        Example(ExampleKind.App, tr(R.string.chat_example_creator), "creator"),
+        Example(ExampleKind.App, tr(R.string.chat_example_ai_apps), "ai_apps"),
     )
 
     /** 对话页顶栏的标题:固定是 App 名;副标题说此刻在做什么。 */
