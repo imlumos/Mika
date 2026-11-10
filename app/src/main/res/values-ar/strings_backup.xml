@@ -11,7 +11,7 @@
     <string name="backup_import_what">ما ستتم استعادته</string>
     <string name="backup_not_included">لا تتضمن النسخة الاحتياطية تسجيلات الدخول إلى المواقع وبيئة تشغيل وضع الحماية وأذونات النظام. سجّل الدخول وامنح الأذونات مجددًا بعد الاستعادة.</string>
     <string name="backup_group_settings">الإعدادات</string>
-    <string name="backup_group_settings_sub">الإجراءات السريعة والتفضيلات واللغة والصوت والوكيل وأذونات التطبيقات</string>
+    <string name="backup_group_settings_sub">المهام المقترحة والتفضيلات واللغة والصوت والوكيل وأذونات التطبيقات</string>
     <string name="backup_group_models">النماذج</string>
     <string name="backup_group_models_sub">مقدمو الخدمة ومفاتيح API وتسجيلات دخول الحسابات</string>
     <string name="backup_group_connections">الاتصالات</string>

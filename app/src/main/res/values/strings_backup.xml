@@ -11,7 +11,7 @@
     <string name="backup_import_what">What to restore</string>
     <string name="backup_not_included">Website logins, the sandbox runtime and system permissions aren’t in the backup. Sign in and grant permissions again after restoring.</string>
     <string name="backup_group_settings">Settings</string>
-    <string name="backup_group_settings_sub">Home quick actions, preferences, language, voice, proxy, app access</string>
+    <string name="backup_group_settings_sub">Recommended tasks, preferences, language, voice, proxy, app access</string>
     <string name="backup_group_models">Models</string>
     <string name="backup_group_models_sub">Providers, API keys and account sign-ins</string>
     <string name="backup_group_connections">Connections</string>

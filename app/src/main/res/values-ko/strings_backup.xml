@@ -11,7 +11,7 @@
     <string name="backup_import_what">복원할 내용</string>
     <string name="backup_not_included">웹사이트 로그인 상태, 샌드박스 실행 환경, 시스템 권한은 백업에 포함되지 않아요. 복원 후 다시 로그인하고 권한을 허용하세요.</string>
     <string name="backup_group_settings">설정</string>
-    <string name="backup_group_settings_sub">홈 빠른 작업, 각종 설정, 언어, 음성, 프록시, 앱 권한</string>
+    <string name="backup_group_settings_sub">추천 작업, 각종 설정, 언어, 음성, 프록시, 앱 권한</string>
     <string name="backup_group_models">모델</string>
     <string name="backup_group_models_sub">제공업체, API 키, 계정 로그인</string>
     <string name="backup_group_connections">연결</string>

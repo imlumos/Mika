@@ -11,7 +11,7 @@
     <string name="backup_import_what">復元する内容</string>
     <string name="backup_not_included">ウェブサイトのログイン状態、サンドボックスの実行環境、システム権限はバックアップに含まれません。復元後にログインと許可をやり直してください。</string>
     <string name="backup_group_settings">設定</string>
-    <string name="backup_group_settings_sub">ホームのクイック操作、各種設定、言語、音声、プロキシ、アプリの権限</string>
+    <string name="backup_group_settings_sub">おすすめタスク、各種設定、言語、音声、プロキシ、アプリの権限</string>
     <string name="backup_group_models">モデル</string>
     <string name="backup_group_models_sub">プロバイダ、API キー、アカウントのログイン</string>
     <string name="backup_group_connections">接続</string>

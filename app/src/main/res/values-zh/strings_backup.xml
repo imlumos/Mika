@@ -11,7 +11,7 @@
     <string name="backup_import_what">要恢复的内容</string>
     <string name="backup_not_included">网站登录状态、沙箱运行环境和系统权限不在备份里，恢复后需要重新登录和授权。</string>
     <string name="backup_group_settings">设置</string>
-    <string name="backup_group_settings_sub">首页快捷操作、各项设置、语言、语音、代理、应用权限</string>
+    <string name="backup_group_settings_sub">推荐任务、各项设置、语言、语音、代理、应用权限</string>
     <string name="backup_group_models">模型</string>
     <string name="backup_group_models_sub">服务商、API Key 和账号登录</string>
     <string name="backup_group_connections">连接</string>

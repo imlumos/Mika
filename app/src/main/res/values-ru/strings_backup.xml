@@ -11,7 +11,7 @@
     <string name="backup_import_what">Что восстановить</string>
     <string name="backup_not_included">В копию не входят входы на сайты, среда песочницы и системные разрешения. После восстановления войдите и выдайте разрешения заново.</string>
     <string name="backup_group_settings">Настройки</string>
-    <string name="backup_group_settings_sub">Быстрые действия, параметры, язык, голос, прокси и доступ к приложениям</string>
+    <string name="backup_group_settings_sub">Рекомендуемые задачи, параметры, язык, голос, прокси и доступ к приложениям</string>
     <string name="backup_group_models">Модели</string>
     <string name="backup_group_models_sub">Провайдеры, ключи API и входы в аккаунты</string>
     <string name="backup_group_connections">Подключения</string>

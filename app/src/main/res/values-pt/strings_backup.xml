@@ -11,7 +11,7 @@
     <string name="backup_import_what">O que restaurar</string>
     <string name="backup_not_included">O backup não inclui logins de sites, o ambiente do sandbox nem as permissões do sistema. Entre novamente e conceda as permissões depois de restaurar.</string>
     <string name="backup_group_settings">Configurações</string>
-    <string name="backup_group_settings_sub">Ações rápidas, preferências, idioma, voz, proxy e acesso a apps</string>
+    <string name="backup_group_settings_sub">Tarefas recomendadas, preferências, idioma, voz, proxy e acesso a apps</string>
     <string name="backup_group_models">Modelos</string>
     <string name="backup_group_models_sub">Provedores, chaves de API e logins de contas</string>
     <string name="backup_group_connections">Conexões</string>

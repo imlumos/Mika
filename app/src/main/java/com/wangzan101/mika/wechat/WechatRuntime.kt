@@ -17,6 +17,7 @@ import com.wangzan101.mika.core.wechat.WechatAccount
 import com.wangzan101.mika.core.wechat.WechatApi
 import com.wangzan101.mika.core.wechat.WechatHttpException
 import com.wangzan101.mika.core.wechat.WechatQrStart
+import com.wangzan101.mika.settings.FeatureFlags
 import com.wangzan101.mika.task.TaskService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -73,18 +74,21 @@ class WechatRuntime(
             }
         })
 
-    val channel = WechatChannel(store, api)
+    val channel = WechatChannel(store, api,
+        activeAsk = { threadId -> app.taskState.run(threadId)?.activeAsk })
     private var registration: AutoCloseable? = null
     private var monitor: Job? = null
     private val network = WechatNetwork(context) { restartMonitor() }
     private val _state = MutableStateFlow<WechatConnectionState>(
         if (store.account() == null) WechatConnectionState.NeedsBinding else WechatConnectionState.Off)
     val state: StateFlow<WechatConnectionState> = _state.asStateFlow()
+    val allowUnlock: StateFlow<Boolean> = store.allowUnlock
 
     fun channelFor(id: String) = channel.takeIf { id == WechatChannel.ID }
     fun acknowledge(messageId: String) = store.acknowledge(messageId)
 
     @Synchronized fun sync(): Boolean {
+        if (FeatureFlags.get(context).quitRequested()) return false
         val account = store.account()
         if (!store.enabled() || account == null) {
             _state.value = WechatConnectionState.NeedsBinding.takeIf { account == null } ?: WechatConnectionState.Off
@@ -112,7 +116,7 @@ class WechatRuntime(
     }
 
     fun ensureRunning() {
-        if (!store.enabled() || store.account() == null) return
+        if (FeatureFlags.get(context).quitRequested() || !store.enabled() || store.account() == null) return
         _state.value = WechatConnectionState.Connecting
         runCatching { context.startForegroundService(Intent(context, WechatService::class.java)) }
             .onFailure { _state.value = WechatConnectionState.Failed(it.message ?: it::class.simpleName.orEmpty()) }
@@ -127,6 +131,8 @@ class WechatRuntime(
         }
     }
 
+    fun setUnlockAllowed(allowed: Boolean) = store.setUnlockAllowed(allowed)
+
     suspend fun startLogin(): WechatQrStart = withContext(Dispatchers.IO) { api.startLogin() }
 
     /** 调用方取消时只停止本次扫码等待，不影响已绑定账号的监听。 */
@@ -139,6 +145,8 @@ class WechatRuntime(
                 store.saveAccount(account)
                 store.setEnabled(true)
                 owners.bind(ChannelPeer(WechatChannel.ID, account.ownerId, ""))
+                // 旧账号的长轮询必须在这里取消；新请求从已清空的账号游标开始。
+                restartMonitor()
                 ensureRunning()
                 return account
             }

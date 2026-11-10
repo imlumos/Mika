@@ -11,7 +11,7 @@
     <string name="backup_import_what">Qué restaurar</string>
     <string name="backup_not_included">La copia no incluye los inicios de sesión de sitios web, el entorno del sandbox ni los permisos del sistema. Vuelve a iniciar sesión y a conceder permisos tras restaurar.</string>
     <string name="backup_group_settings">Ajustes</string>
-    <string name="backup_group_settings_sub">Acciones rápidas, preferencias, idioma, voz, proxy y acceso a apps</string>
+    <string name="backup_group_settings_sub">Tareas recomendadas, preferencias, idioma, voz, proxy y acceso a apps</string>
     <string name="backup_group_models">Modelos</string>
     <string name="backup_group_models_sub">Proveedores, claves de API e inicios de sesión de cuentas</string>
     <string name="backup_group_connections">Conexiones</string>

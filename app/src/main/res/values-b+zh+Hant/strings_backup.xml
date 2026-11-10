@@ -11,7 +11,7 @@
     <string name="backup_import_what">要還原的內容</string>
     <string name="backup_not_included">網站登入狀態、沙箱執行環境和系統權限不在備份裡，還原後需要重新登入和授權。</string>
     <string name="backup_group_settings">設定</string>
-    <string name="backup_group_settings_sub">首頁快捷操作、各項設定、語言、語音、代理、應用權限</string>
+    <string name="backup_group_settings_sub">推薦任務、各項設定、語言、語音、代理、應用權限</string>
     <string name="backup_group_models">模型</string>
     <string name="backup_group_models_sub">服務商、API Key 和帳號登入</string>
     <string name="backup_group_connections">連線</string>

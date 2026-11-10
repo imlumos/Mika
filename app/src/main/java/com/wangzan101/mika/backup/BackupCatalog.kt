@@ -1,6 +1,7 @@
 package com.wangzan101.mika.backup
 
 import com.wangzan101.mika.core.record.RunMetricsStore
+import com.wangzan101.mika.settings.RecommendedTaskStore
 
 /** 备份按这些分类选;[defaultOn] 为假的要用户自己勾。 */
 enum class BackupGroup(val defaultOn: Boolean = true) {
@@ -40,6 +41,7 @@ internal object BackupCatalog {
         BackupItem(BackupGroup.Settings, "app-access.json"),
         BackupItem(BackupGroup.Settings, "sandbox-settings.json"),
         BackupItem(BackupGroup.Settings, "memory_settings.json"),
+        BackupItem(BackupGroup.Settings, RecommendedTaskStore.FILE),
         BackupItem(BackupGroup.Settings, "settings/net-proxy.bin", secret = SecretForm.WholeFile("mika-net-proxy")),
 
         BackupItem(BackupGroup.Models, "settings/providers.json"),
@@ -72,6 +74,7 @@ internal object BackupCatalog {
     )
 
     val prefs: List<BackupPrefs> = listOf(
+        // 首页已改用推荐任务,这组不再有人读;旧备份里带着它,去掉会被当成损坏文件拒绝导入
         BackupPrefs(BackupGroup.Settings, "chat_examples"),
         BackupPrefs(BackupGroup.Settings, "trace_settings"),
         BackupPrefs(
@@ -90,6 +93,10 @@ internal object BackupCatalog {
         "task_recovery", "triggers", "attach", "onboarding", "voice_input",
         // 给 Mika 放 root 权限,要用户在这台手机上重新授权
         "root",
+        // 自动更新开关跟这台设备走
+        "automatic-updates",
+        // API Key 按服务商分键存 Keystore 密文,目录的固定键映射解不开
+        "web_search",
     )
 
     /** 明确不备份的文件:运行中的账本、缓存,和导入时另行重置的审批模式。 */
@@ -98,6 +105,8 @@ internal object BackupCatalog {
         "settings/mcp-usb.json", "sandbox", "harness-traces", "adb",
         // 微信绑定能从外面给手机派任务,要用户重新扫码
         "wechat",
+        // 排队中的追问和未发送草稿的临时副本,都属于这台手机上正在进行的事
+        "followups-v1.json", "shared-drafts", "library-attachments",
     )
 
     /** 路径属于哪一项;不在白名单里、或想跳出目录的返回 null。 */

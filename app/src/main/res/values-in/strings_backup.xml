@@ -11,7 +11,7 @@
     <string name="backup_import_what">Yang dipulihkan</string>
     <string name="backup_not_included">Cadangan tidak mencakup login situs web, lingkungan sandbox, dan izin sistem. Masuk dan berikan izin lagi setelah memulihkan.</string>
     <string name="backup_group_settings">Pengaturan</string>
-    <string name="backup_group_settings_sub">Tindakan cepat, preferensi, bahasa, suara, proxy, dan akses aplikasi</string>
+    <string name="backup_group_settings_sub">Tugas rekomendasi, preferensi, bahasa, suara, proxy, dan akses aplikasi</string>
     <string name="backup_group_models">Model</string>
     <string name="backup_group_models_sub">Penyedia, kunci API, dan login akun</string>
     <string name="backup_group_connections">Koneksi</string>
