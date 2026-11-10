@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">Переместить вверх</string>
+    <string name="recommendation_move_down">Переместить вниз</string>
+    <string name="recommendation_restore">Восстановить по умолчанию</string>
+    <string name="recommendation_restore_message">Добавленные и изменённые вами рекомендуемые задачи будут удалены.</string>
+</resources>

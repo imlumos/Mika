@@ -50,7 +50,7 @@ class CapsuleCardContentTest {
         override fun answer(runKey: String, text: String) { calls += "answer $runKey $text" }
         override fun approve(runKey: String, requestKey: Int) { calls += "approve $runKey $requestKey" }
         override fun decline(runKey: String, requestKey: Int) { calls += "decline $runKey $requestKey" }
-        override fun openMika(conversationId: String) { calls += "open $conversationId" }
+        override fun openMika(conversationId: String?) { calls += "open $conversationId" }
         override fun zoom(on: Boolean) { calls += "zoom $on" }
         override fun openInput() { calls += "openInput" }
         override fun draft(text: String) { calls += "draft $text" }
@@ -279,6 +279,12 @@ class CapsuleCardContentTest {
         assertTrue("展开后箭头仍在输入栏上方", opened.boundsInRoot.bottom <= inputAfter.boundsInRoot.top)
         compose.onNodeWithTag("capsule-teach-shelf").performClick()
         compose.onNodeWithText("教 Mika").assertDoesNotExist()
+    }
+
+    @Test fun freshChatCanStillGoBackToMika() {
+        show(CardView.Chat("c1", fresh = true))
+        compose.onNodeWithText(CardCopy.BACK_TO_MIKA).performClick()
+        assertEquals(listOf("open null"), calls)
     }
 
     @Test fun runningChatDoesNotShowTeachShelf() {

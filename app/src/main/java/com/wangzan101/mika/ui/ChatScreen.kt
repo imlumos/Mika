@@ -338,7 +338,7 @@ fun ChatScreen(
             ) {
                 if (ui.exchanges.isEmpty() && ui.blocked == null) {
                     item("empty") {
-                        EmptyState(ui.conversationId, recommendedTasks) { prompt ->
+                        EmptyState(ui.conversationId, recommendedTasks, recommendationStore) { prompt ->
                             if (input.isEmpty()) vm.input(prompt) else pendingExample = prompt
                         }
                     }
@@ -600,9 +600,10 @@ private fun LazyListState.nearTail(thresholdPx: Int): Boolean {
 
 /** 问候、一句「想让 Mika 做什么？」和推荐任务。点一条把提示词填进输入框,改好了再发;一条都没有时不显示列表。 */
 @Composable
-private fun EmptyState(conversation: String?, tasks: List<RecommendedTask>, onPick: (String) -> Unit) {
+private fun EmptyState(conversation: String?, tasks: List<RecommendedTask>, store: RecommendedTaskStore?, onPick: (String) -> Unit) {
     val c = MikaTheme.colors
     val hour = remember(conversation) { LocalTime.now().hour }
+    var acting by remember { mutableStateOf<RecommendedTask?>(null) }
     Column(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 52.dp)) {
             Text(ChatCopy.greeting(hour), style = MikaType.LargeTitle, color = c.ink)
@@ -611,15 +612,16 @@ private fun EmptyState(conversation: String?, tasks: List<RecommendedTask>, onPi
         if (tasks.isNotEmpty()) {
             MikaCard(Modifier.padding(top = 28.dp)) {
                 tasks.forEachIndexed { i, task ->
-                    ExampleRow(MikaIcons.Message, task.title, first = i == 0) { onPick(task.prompt) }
+                    ExampleRow(MikaIcons.Message, task.title, first = i == 0, onLongClick = store?.let { { acting = task } }) { onPick(task.prompt) }
                 }
             }
         }
     }
+    store?.let { RecommendedTaskMenu(it, tasks, acting) { acting = null } }
 }
 
 @Composable
-private fun ExampleRow(icon: ImageVector, text: String, first: Boolean, onClick: () -> Unit) {
+private fun ExampleRow(icon: ImageVector, text: String, first: Boolean, onLongClick: (() -> Unit)?, onClick: () -> Unit) {
     val c = MikaTheme.colors
     Row(
         Modifier.fillMaxWidth()
@@ -627,7 +629,7 @@ private fun ExampleRow(icon: ImageVector, text: String, first: Boolean, onClick:
                 val y = 0.25.dp.toPx()
                 drawLine(c.hair, Offset(52.dp.toPx(), y), Offset(size.width, y), strokeWidth = 0.5.dp.toPx())
             })
-            .clickable(role = Role.Button, onClick = onClick)
+            .recommendationClick(onLongClick, onClick)
             .heightIn(min = 56.dp)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

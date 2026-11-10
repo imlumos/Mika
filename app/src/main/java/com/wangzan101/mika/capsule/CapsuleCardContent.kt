@@ -161,7 +161,8 @@ interface CardActions {
     fun answer(runKey: String, text: String)
     fun approve(runKey: String, requestKey: Int)
     fun decline(runKey: String, requestKey: Int)
-    fun openMika(conversationId: String)
+    /** [conversationId] 为 null 时(新对话还没有编号)只回到 App,不切换对话。 */
+    fun openMika(conversationId: String?)
     fun zoom(on: Boolean)
     /** 点了底部的输入框:这时浮层才改成能接收键盘。 */
     fun openInput()
@@ -771,7 +772,7 @@ private fun ChatCard(
         QueuedLine(queuedCount, onQueued)
         if (r == null) TeachShelf(actions::teach)
         input()
-        FooterLinks(actions, card.target?.let { id -> CardCopy.BACK_TO_MIKA to { actions.openMika(id) } })
+        FooterLinks(actions, CardCopy.BACK_TO_MIKA to { actions.openMika(card.target) })
     }
 }
 
@@ -808,7 +809,7 @@ private fun TeachShelf(onTeach: () -> Unit) {
 }
 
 /**
- * 卡片最底下一行:[primary](「查看过程」「回到 Mika」;空闲卡片还没有对话时没有)和灰色的「关闭悬浮胶囊」。
+ * 卡片最底下一行:[primary](「查看过程」「回到 Mika」)和灰色的「关闭悬浮胶囊」。
  * 右上角的 × 只是收起;想让胶囊不再出现的人在这里关,不用去找设置。
  */
 @Composable

@@ -74,7 +74,7 @@ internal object BackupCatalog {
     )
 
     val prefs: List<BackupPrefs> = listOf(
-        // 首页已改用推荐任务,这组不再有人读;旧备份里带着它,去掉会被当成损坏文件拒绝导入
+        // 旧版首页快捷操作:旧备份里带着它,去掉会被当成损坏文件拒绝导入;恢复后由首页导入推荐任务
         BackupPrefs(BackupGroup.Settings, "chat_examples"),
         BackupPrefs(BackupGroup.Settings, "trace_settings"),
         BackupPrefs(

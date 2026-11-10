@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">نقل لأعلى</string>
+    <string name="recommendation_move_down">نقل لأسفل</string>
+    <string name="recommendation_restore">استعادة الإعدادات الافتراضية</string>
+    <string name="recommendation_restore_message">سيتم مسح المهام المقترحة التي أضفتها أو غيّرتها.</string>
+</resources>

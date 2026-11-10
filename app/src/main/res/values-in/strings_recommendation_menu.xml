@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">Pindahkan ke atas</string>
+    <string name="recommendation_move_down">Pindahkan ke bawah</string>
+    <string name="recommendation_restore">Pulihkan default</string>
+    <string name="recommendation_restore_message">Tugas rekomendasi yang Anda tambahkan atau ubah akan dihapus.</string>
+</resources>

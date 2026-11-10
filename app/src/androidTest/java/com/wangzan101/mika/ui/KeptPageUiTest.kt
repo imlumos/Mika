@@ -40,7 +40,7 @@ class KeptPageUiTest {
         override fun answer(runKey: String, text: String) {}
         override fun approve(runKey: String, requestKey: Int) {}
         override fun decline(runKey: String, requestKey: Int) {}
-        override fun openMika(conversationId: String) { calls += "open $conversationId" }
+        override fun openMika(conversationId: String?) { calls += "open $conversationId" }
         override fun zoom(on: Boolean) { calls += "zoom $on" }
         override fun openInput() {}
         override fun draft(text: String) {}

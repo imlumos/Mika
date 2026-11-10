@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">위로 이동</string>
+    <string name="recommendation_move_down">아래로 이동</string>
+    <string name="recommendation_restore">기본값으로 복원</string>
+    <string name="recommendation_restore_message">추가하거나 변경한 추천 작업이 지워집니다.</string>
+</resources>

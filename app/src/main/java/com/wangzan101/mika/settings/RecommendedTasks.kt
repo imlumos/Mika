@@ -91,6 +91,13 @@ class RecommendedTaskStore(private val file: File, private val ids: () -> String
         return commit(emptyList())
     }
 
+    /** 整份改写,给首页长按菜单排序和恢复默认用;内容合不合法由调用方负责。 */
+    @Synchronized
+    fun rewrite(change: (List<RecommendedTask>) -> List<RecommendedTask>): RecommendedTaskError? {
+        guard()?.let { return it }
+        return commit(change(_tasks.value))
+    }
+
     private fun guard(): RecommendedTaskError? = when {
         _unreadable.value -> RecommendedTaskError.Unreadable
         !loaded && file.exists() -> RecommendedTaskError.Unreadable

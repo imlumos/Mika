@@ -345,7 +345,7 @@ class PageChat(private val context: Context, private val browser: UserBrowser, p
         override fun answer(runKey: String, text: String) = TaskService.answer(context, text, runKey)
         override fun approve(runKey: String, requestKey: Int) = TaskService.approve(context, requestKey, runKey)
         override fun decline(runKey: String, requestKey: Int) = TaskService.decline(context, requestKey, runKey)
-        override fun openMika(conversationId: String) {
+        override fun openMika(conversationId: String?) {
             runCatching { context.startActivity(TaskService.openAppIntent(context, conversationId)) }
                 .onFailure { Log.w(TAG, "could not open the conversation", it) }
         }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">انتقال به بالا</string>
+    <string name="recommendation_move_down">انتقال به پایین</string>
+    <string name="recommendation_restore">بازگردانی پیش‌فرض</string>
+    <string name="recommendation_restore_message">کارهای پیشنهادی که اضافه یا تغییر داده‌اید پاک می‌شوند.</string>
+</resources>

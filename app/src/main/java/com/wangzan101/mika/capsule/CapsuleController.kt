@@ -1282,7 +1282,7 @@ class CapsuleController(
         override fun answer(runKey: String, text: String) = TaskService.answer(context, text, runKey)
         override fun approve(runKey: String, requestKey: Int) = TaskService.approve(context, requestKey, runKey)
         override fun decline(runKey: String, requestKey: Int) = TaskService.decline(context, requestKey, runKey)
-        override fun openMika(conversationId: String) {
+        override fun openMika(conversationId: String?) {
             open(conversationId)
             collapse()
         }

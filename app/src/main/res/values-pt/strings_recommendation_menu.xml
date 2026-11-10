@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">Mover para cima</string>
+    <string name="recommendation_move_down">Mover para baixo</string>
+    <string name="recommendation_restore">Restaurar padrão</string>
+    <string name="recommendation_restore_message">As tarefas recomendadas que você adicionou ou alterou serão apagadas.</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">上移</string>
+    <string name="recommendation_move_down">下移</string>
+    <string name="recommendation_restore">恢复默认</string>
+    <string name="recommendation_restore_message">你添加和改过的推荐任务都会被清除。</string>
+</resources>

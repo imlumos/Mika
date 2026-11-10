@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">上へ移動</string>
+    <string name="recommendation_move_down">下へ移動</string>
+    <string name="recommendation_restore">デフォルトに戻す</string>
+    <string name="recommendation_restore_message">追加または変更したおすすめタスクは消去されます。</string>
+</resources>

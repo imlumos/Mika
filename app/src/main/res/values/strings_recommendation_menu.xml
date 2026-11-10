@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_move_up">Move up</string>
+    <string name="recommendation_move_down">Move down</string>
+    <string name="recommendation_restore">Restore defaults</string>
+    <string name="recommendation_restore_message">Recommended tasks you added or changed will be cleared.</string>
+</resources>
