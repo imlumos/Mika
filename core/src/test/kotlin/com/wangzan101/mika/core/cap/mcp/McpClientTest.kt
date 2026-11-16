@@ -33,6 +33,7 @@ import org.junit.Test
 class McpClientTest {
     private class FakeEndpoint : McpEndpoint {
         override val serverId = "demo"
+        override var instructions: String? = null
         var offered = listOf(McpToolDescriptor("search", "Search", buildJsonObject { put("type", "object") }, McpAnnotations(readOnlyHint = true)))
         var result = McpResult("found")
         var calls = 0
@@ -55,6 +56,26 @@ class McpClientTest {
     private fun parameters(tools: ToolDispatcher): JsonObject = Json.parseToJsonElement(
         tools.definitions().single { it.name == "mcp_demo__search" }.parametersJsonSchema,
     ).jsonObject
+
+    @Test fun serverInstructionsReachTheModelWithoutGrantingApproval() {
+        val endpoint = FakeEndpoint().apply { instructions = "Use search before fetching a result." }
+        val tools = toolDispatcher(FakeScreen(), mcpServers = listOf(McpConnection(endpoint)))
+        val sections = tools.promptSections(tools.definitions()).joinToString("\n")
+        assertTrue(sections, com.wangzan101.mika.core.observation.Untrusted.wrap(endpoint.instructions!!) in sections)
+        assertEquals(ActionRisk.Change, tools.approvalRisk("mcp_demo__search")?.level)
+    }
+
+    @Test fun blankInstructionsAddNoSectionAndLongInstructionsStayBounded() {
+        val endpoint = FakeEndpoint()
+        val tools = toolDispatcher(FakeScreen(), mcpServers = listOf(McpConnection(endpoint)))
+        val baseline = tools.promptSections(tools.definitions())
+        endpoint.instructions = "  \n  "
+        assertEquals(baseline, tools.promptSections(tools.definitions()))
+        endpoint.instructions = "x".repeat(5000)
+        val section = tools.promptSections(tools.definitions()).single { "MCP server guidance" in it }
+        assertTrue(section, section.length < 4200)
+        assertFalse(section, "x".repeat(4001) in section)
+    }
 
     @Test fun nullPropertiesIsTreatedAsNoParameters() = runBlocking {
         val endpoint = endpointWithSchema("""{"type":"object","properties":null}""")
@@ -101,6 +122,31 @@ class McpClientTest {
         ), properties["q"])
         assertEquals(Json.parseToJsonElement("""{"type":"integer","minimum":1}"""), properties["n"])
         assertEquals(listOf("q"), schema["required"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test fun requiredParameterMissingFromPropertiesStaysCallable() = runBlocking {
+        val endpoint = endpointWithSchema(
+            """{"type":"object","properties":{"q":{"type":"string"}},"required":["missing"]}""",
+        )
+        val tools = toolDispatcher(FakeScreen(), mcpServers = listOf(McpConnection(endpoint)))
+        val schema = parameters(tools)
+        // 缺席的 required 补成空的宽松 schema,Args 的 allowed 才会包含它
+        assertEquals(JsonObject(emptyMap()), schema["properties"]!!.jsonObject["missing"])
+        assertEquals(listOf("missing"), schema["required"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val result = tools.execute(Part.ToolCall("c", "mcp_demo__search", """{"missing":"x"}"""), ActionPass())
+        assertEquals(JsonPrimitive(true), result.content["ok"])
+        assertEquals(1, endpoint.calls)
+    }
+
+    @Test fun blankRequiredNamesAreDropped() = runBlocking {
+        val endpoint = endpointWithSchema(
+            """{"type":"object","properties":{"q":{"type":"string"}},"required":["","  ","q"]}""",
+        )
+        val tools = toolDispatcher(FakeScreen(), mcpServers = listOf(McpConnection(endpoint)))
+        assertEquals(listOf("q"), parameters(tools)["required"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val result = tools.execute(Part.ToolCall("c", "mcp_demo__search", """{"q":"x"}"""), ActionPass())
+        assertEquals(JsonPrimitive(true), result.content["ok"])
+        assertEquals(1, endpoint.calls)
     }
 
     @Test fun oneServerAssemblyFailureKeepsOtherCapabilitiesAndReportsCause() = runBlocking {

@@ -14,11 +14,14 @@ import com.wangzan101.mika.chat.RetryAttachmentStatus
 import com.wangzan101.mika.chat.ConversationStore
 import com.wangzan101.mika.chat.ConversationSummary
 import com.wangzan101.mika.chat.CurrentChat
+import com.wangzan101.mika.chat.DeleteBatch
 import com.wangzan101.mika.chat.DeleteImpact
 import com.wangzan101.mika.chat.SharedDraft
 import com.wangzan101.mika.chat.SharedDraftStore
 import com.wangzan101.mika.chat.SharedFile
 import com.wangzan101.mika.cap.sandbox.ImportResult
+import com.wangzan101.mika.cap.sandbox.AttachmentFailure
+import com.wangzan101.mika.cap.sandbox.AttachmentFailureReason
 import com.wangzan101.mika.confirm.ConfirmationCopy
 import com.wangzan101.mika.confirm.ConfirmationNotifier
 import com.wangzan101.mika.core.agent.AttachmentLines
@@ -26,6 +29,7 @@ import com.wangzan101.mika.core.agent.Conversation
 import com.wangzan101.mika.core.agent.QuoteMessage
 import com.wangzan101.mika.core.agent.TaskState
 import com.wangzan101.mika.task.TaskGate
+import com.wangzan101.mika.core.agent.NoticeTurn
 import com.wangzan101.mika.core.agent.Turn
 import com.wangzan101.mika.core.memory.MemoryItem
 import com.wangzan101.mika.core.memory.MemoryNote
@@ -59,7 +63,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.wangzan101.mika.core.tool.ToolIndex
 import com.wangzan101.mika.core.assembly.knownTools
-import com.wangzan101.mika.core.cap.web.AttachedPage
+import com.wangzan101.mika.core.agent.AttachedPage
 import com.wangzan101.mika.core.userscreen.UserScreenMessage
 import kotlin.coroutines.CoroutineContext
 
@@ -101,8 +105,8 @@ interface TaskActions {
     fun answerIn(conversationId: String, text: String) = answer(text)
     fun approveIn(conversationId: String, key: Int) = approve(key)
     fun declineIn(conversationId: String, key: Int) = decline(key)
-    /** 恢复这个对话任务当前 App 的声音;没有任务就不动。 */
-    fun unmuteIn(conversationId: String) {}
+    /** 切换这个对话任务当前 App 的声音(恢复/再静上);没有任务就不动。 */
+    fun togglePipSoundIn(conversationId: String) {}
 }
 
 enum class StepState { Ok, Run, Wait, Dim }
@@ -204,6 +208,13 @@ data class Exchange(
     val stepActions: Map<Int, List<StepAction>> = emptyMap(),
 )
 
+/**
+ * 有运行记录可看的那次运行。通知提醒那一轮([NoticeTurn])是 Mika 直接写进对话的,没跑过任务,它的编号只是用来认它的:
+ * 界面上「查看过程」、来源、重新开始都按这个给,那一轮就都没有(不然点进去只会说「记录已过期」)。
+ * 认轮次、和存下的那份对上([ChatViewModel] 里按 [Exchange.runId])照旧用原来的编号。
+ */
+val Exchange.recordedRun: String? get() = runId?.takeUnless { it.startsWith(NoticeTurn.RUN_PREFIX) }
+
 /** 在跑时的一行进展:等你时说等什么;模型请求在途时只给中性状态;否则是这一步的话,没有就是最近做的事。 */
 fun liveLine(ex: Exchange): String? {
     when (ex.status) {
@@ -295,8 +306,8 @@ data class ChatUi(
     val blocked: List<Problem>? = null,
     val pip: PipUi = PipUi(),
     val composer: ComposerMode = ComposerMode.Idle,
-    /** 任务进行中补充消息交给谁;新任务开始时回到引导。 */
-    val followUpMode: FollowUpMode = FollowUpMode.Steer,
+    /** 任务进行中补充消息交给谁;主对话默认排队,点消息右侧箭头后改为引导。 */
+    val followUpMode: FollowUpMode = FollowUpMode.Queue,
     /** 这个对话明确排队、还没开始的下一件(按先后);开始或取消后从这里拿掉。 */
     val queued: List<QueuedFollowUp> = emptyList(),
     val takeoverStage: Takeover.Stage = Takeover.Stage.None,
@@ -307,7 +318,7 @@ data class ChatUi(
     /** 正在把附件复制进工作区(发送时)。 */
     val importing: Boolean = false,
     /** 没收下的附件(太大或读不了);为空不提示。 */
-    val rejectedAttachments: List<String> = emptyList(),
+    val rejectedAttachments: List<AttachmentFailure> = emptyList(),
     /** 超过一次能带的个数([AttachTray.LIMIT])没加上的个数;为 0 不提示。 */
     val overLimit: Int = 0,
     /** 系统分享刚预填到新对话的内容;只供输入框展示,不会触发任务。 */
@@ -326,10 +337,10 @@ private data class ComposerDraft(
     val input: String = "",
     val attachments: List<PendingAttachment> = emptyList(),
     val quote: QuoteMessage.Quote? = null,
-    val followUpMode: FollowUpMode = FollowUpMode.Steer,
+    val followUpMode: FollowUpMode = FollowUpMode.Queue,
     val sharedDraft: SharedDraft? = null,
     val importing: Boolean = false,
-    val rejected: List<String> = emptyList(),
+    val rejected: List<AttachmentFailure> = emptyList(),
     val overLimit: Int = 0,
 ) {
     val hasContent: Boolean get() = input.isNotEmpty() || attachments.isNotEmpty() || quote != null || importing || rejected.isNotEmpty()
@@ -359,7 +370,7 @@ private fun ChatUi.rebuildForConversation(
     pip = PipUi(),
     composer = ComposerMode.Idle,
     input = input,
-    followUpMode = FollowUpMode.Steer,
+    followUpMode = FollowUpMode.Queue,
     queued = emptyList(),
     takeoverStage = takeoverStage,
     attachments = attachments,
@@ -373,7 +384,7 @@ private fun ChatUi.rebuildForConversation(
 
 /**
  * 聊天界面的状态。步骤列表来自运行事件里实际做过的事(活动);进展那一行是模型这一步的话,
- * 等待模型时仅显示状态。任务在跑时输入框发的话交给这个任务(插话)。
+ * 等待模型时仅显示状态。任务在跑时输入框发的话先排队,用户再决定是否改为当前任务的引导。
  * 整个进程只用一个实例,界面关掉再打开时正在跑的任务的步骤还在。
  */
 class ChatViewModel(
@@ -468,11 +479,17 @@ class ChatViewModel(
     private val _ui = MutableStateFlow(ChatUi())
     val ui: StateFlow<ChatUi> = _ui.asStateFlow()
 
+    /** 从搜索或文件库过来的一次性跳转;聊天页滚到目标后清掉。 */
+    private val _jump = MutableStateFlow<ChatJump?>(null)
+    val jump: StateFlow<ChatJump?> = _jump.asStateFlow()
+    private var jumpSerial = 0L
+
     private val drafts = MutableStateFlow<Map<String, ComposerDraft>>(emptyMap())
     private var draftStateChanged = false
     private val libraryCopies = mutableMapOf<String, () -> Unit>()
     private val librarySources = mutableMapOf<String, LibraryFileHandle>()
     private val libraryImports = mutableMapOf<String, Int>()
+    private val deviceImports = mutableMapOf<String, kotlinx.coroutines.Job>()
 
     /** 只回收本进程登记的副本；导入中或任何草稿引用中的 URI 继续保留。 */
     private fun releaseUnusedLibraryCopies() {
@@ -500,7 +517,8 @@ class ChatViewModel(
     fun withDrafts(history: List<ConversationSummary>): List<ConversationSummary> =
         draftConversations.value.filter { draft -> history.none { it.id == draft.id } }.map {
             it.copy(title = store.title(it.id) ?: it.title, pinnedAt = store.pinnedAt(it.id),
-                page = store.pageOrigin(it.id), branchOf = store.branchOrigin(it.id))
+                page = store.pageOrigin(it.id), branchOf = store.branchOrigin(it.id), archivedAt = store.archivedAt(it.id),
+                restoredAt = store.restoredAt(it.id))
         } + history
 
     private fun draftConversation(): String {
@@ -822,7 +840,7 @@ class ChatViewModel(
     }
 
     private fun canAttach(ui: ChatUi) = ui.attachEnabled && !ui.importing &&
-        (ui.composer == ComposerMode.Idle || (ui.composer != ComposerMode.Idle && ui.followUpMode == FollowUpMode.Queue))
+        (ui.composer == ComposerMode.Idle || ui.followUpMode == FollowUpMode.Queue)
 
     /** 从相机、相册、文件选择器拿到的文件:没有任务在跑、沙箱就绪时才收;读出名字和大小后挂在输入框上方,随下一句话发出去。 */
     fun attach(uris: List<String>, conversationId: String? = _ui.value.conversationId) {
@@ -830,8 +848,10 @@ class ChatViewModel(
         val id = draftConversation()
         val sharedBefore = _ui.value.sharedDraft
         val serialBefore = sharedDraftSerial
+        val wasIdle = _ui.value.composer == ComposerMode.Idle
         scope.launch {
             val items = try { describeAttachments(uris) } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
+            if (wasIdle && _ui.value.composer != ComposerMode.Idle) return@launch
             if (_ui.value.conversationId == id && (!canAttach(_ui.value) || sharedDraftSerial != serialBefore)) return@launch
             if (_ui.value.conversationId != id && drafts.value[id]?.sharedDraft != sharedBefore) return@launch
             updateDraft(id) { draft ->
@@ -841,18 +861,136 @@ class ChatViewModel(
         }
     }
 
+    /** Copy selected device files into the conversation that opened the browser. */
+    internal fun importDeviceAttachments(conversationId: String, paths: List<String>,
+        copy: suspend (String, String) -> com.wangzan101.mika.core.cap.devicefiles.DeviceFileImport) {
+        if (_ui.value.conversationId != conversationId || !canAttach(_ui.value) || paths.isEmpty()) return
+        val slots = (AttachTray.LIMIT - _ui.value.attachments.size).coerceAtLeast(0)
+        val selected = paths.distinct().take(slots)
+        val dropped = (paths.distinct().size - selected.size).coerceAtLeast(0)
+        if (selected.isEmpty()) {
+            updateDraft(conversationId) { it.copy(overLimit = dropped) }
+            return
+        }
+        updateDraft(conversationId) { it.copy(importing = true, rejected = emptyList(), overLimit = dropped) }
+        val job = scope.launch {
+            val added = mutableListOf<PendingAttachment>()
+            val failures = mutableListOf<AttachmentFailure>()
+            try {
+                for (path in selected) {
+                    if (conversationId in _deleted.value || conversationId in deleting) break
+                    try {
+                        val result = copy(path, conversationId)
+                        added += PendingAttachment("workspace:$conversationId:${result.path}", result.path.substringAfterLast('/'), result.size,
+                            workspaceConversationId = conversationId, workspacePath = result.path)
+                    } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                        val reason = when ((e as? com.wangzan101.mika.core.workspace.SandboxError)?.code) {
+                            "too_large" -> AttachmentFailureReason.TOO_LARGE
+                            "low_device_space" -> AttachmentFailureReason.LOW_DEVICE_SPACE
+                            "workspace_limit" -> AttachmentFailureReason.WORKSPACE_LIMIT
+                            else -> AttachmentFailureReason.IO_ERROR
+                        }
+                        failures += AttachmentFailure(path.substringAfterLast('/'), reason)
+                    }
+                }
+            } finally {
+                updateDraft(conversationId) { draft ->
+                    val (merged, overflow) = AttachTray.add(draft.attachments, added)
+                    draft.copy(importing = false, attachments = merged, rejected = failures, overLimit = draft.overLimit + overflow)
+                }
+            }
+        }
+        deviceImports[conversationId] = job
+        job.invokeOnCompletion { deviceImports.remove(conversationId, job) }
+    }
+
     /** 为当前新会话分配草稿编号；调用方在主线程调用。 */
     fun libraryTargetConversation(): String = draftConversation()
+
+    /** 目标草稿此刻能不能收文件库的文件；不能时返回 null。调用方在主线程调用。 */
+    private fun libraryDraft(conversationId: String): ComposerDraft? {
+        if (conversationId.isBlank() || conversationId in _deleted.value || conversationId in deleting || !sandboxReady.value)
+            return null
+        val current = _ui.value.takeIf { it.conversationId == conversationId }
+        if (current != null && !canAttach(current)) return null
+        val draft = current?.draft() ?: drafts.value[conversationId] ?: ComposerDraft()
+        if (draft.importing || (current == null && conversationId in activeConversations.value)) return null
+        return draft
+    }
+
+    /**
+     * 批量加入前的规划:按传入顺序去掉目标草稿里已有的来源,再截到剩余槽位。
+     * 不复制文件；合并时会按当时的目标状态再校验一次。调用方在主线程调用。
+     */
+    fun planLibraryAttachments(conversationId: String, sources: List<LibraryFileHandle>): LibraryAddPlan? {
+        val draft = libraryDraft(conversationId) ?: return null
+        var slots = (AttachTray.LIMIT - draft.attachments.size).coerceAtLeast(0)
+        var duplicates = 0
+        var overLimit = 0
+        val accepted = mutableListOf<LibraryFileHandle>()
+        val seen = mutableSetOf<LibraryFileHandle>()
+        for (source in sources) {
+            val duplicate = !seen.add(source) || draft.attachments.any { librarySources[it.uri] == source }
+            when {
+                duplicate -> duplicates++
+                slots <= 0 -> overLimit++
+                else -> {
+                    accepted += source
+                    slots--
+                }
+            }
+        }
+        return LibraryAddPlan(accepted, duplicates, overLimit)
+    }
+
+    /**
+     * 把已经复制好的一批文件合并到目标草稿；只更新一次草稿。
+     * 收下的副本登记在 [libraryCopies] 里，没收下的当场释放。调用方在主线程调用。
+     */
+    fun addLibraryAttachments(conversationId: String, items: List<LibraryStaged>, overLimit: Int = 0): LibraryMergeResult {
+        val draft = libraryDraft(conversationId)
+        if (draft == null) {
+            items.forEach { runCatching { it.release() } }
+            return LibraryMergeResult(0, 0, 0, unavailable = true)
+        }
+        var attachments = draft.attachments
+        var added = 0
+        var duplicates = 0
+        var full = 0
+        val accepted = mutableListOf<LibraryStaged>()
+        for (item in items) {
+            if (attachments.any { librarySources[it.uri] == item.source }) {
+                duplicates++
+                runCatching { item.release() }
+                continue
+            }
+            val (merged, dropped) = AttachTray.add(attachments, listOf(item.attachment))
+            if (dropped != 0) {
+                full++
+                runCatching { item.release() }
+                continue
+            }
+            attachments = merged
+            added++
+            accepted += item
+        }
+        if (added > 0) {
+            draftStateChanged = true
+            accepted.forEach { item ->
+                libraryCopies.putIfAbsent(item.attachment.uri, item.release)
+                librarySources.putIfAbsent(item.attachment.uri, item.source)
+            }
+            updateDraft(conversationId) {
+                it.copy(attachments = attachments, rejected = emptyList(), overLimit = overLimit + full)
+            }
+        }
+        return LibraryMergeResult(added, duplicates, full, unavailable = false)
+    }
 
     /** 合并文件库副本到指定会话的草稿，不切换会话或覆盖已有内容。调用方在主线程调用。 */
     fun addLibraryAttachment(conversationId: String, item: PendingAttachment, source: LibraryFileHandle? = null,
                              release: () -> Unit = {}): LibraryAttachmentResult {
-        if (conversationId.isBlank() || conversationId in _deleted.value || conversationId in deleting || !sandboxReady.value)
-            return LibraryAttachmentResult.Unavailable
-        val current = _ui.value.takeIf { it.conversationId == conversationId }
-        val draft = current?.draft() ?: drafts.value[conversationId] ?: ComposerDraft()
-        if ((current != null && !canAttach(current)) || draft.importing ||
-            (current == null && conversationId in activeConversations.value)) return LibraryAttachmentResult.Unavailable
+        val draft = libraryDraft(conversationId) ?: return LibraryAttachmentResult.Unavailable
         val duplicate = source != null && draft.attachments.any { librarySources[it.uri] == source }
         if (duplicate) {
             val referenced = item.uri in libraryImports || item.uri in libraryCopies ||
@@ -995,7 +1133,8 @@ class ChatViewModel(
 
     /**
      * 带着附件开新任务:先把附件复制进对话工作区的 inbox/(期间输入框上方显示正在添加),
-     * 再把每个附件写成一行「附件:<路径>(<大小>)」接在话后面开始任务。没收下的列在输入框上方;话和附件都没有了就不发。
+     * 全部复制成功后,把每个附件写成一行「附件:<路径>(<大小>)」接在话后面开始任务。
+     * 有附件没收下时保留草稿并列出失败项,由用户重试或移除后再发送。
      * 复制期间换了对话或开始了别的任务就不发了(复制进去的文件留在原对话的工作区里)。
      */
     private fun sendWithAttachments(text: String, items: List<PendingAttachment>, check: Prerequisites.Check): Boolean {
@@ -1025,6 +1164,7 @@ class ChatViewModel(
                     var checked = 0
                     val added = mutableListOf<Pair<String, Long>>()
                     val rejected = mutableListOf<String>()
+                    val failures = mutableListOf<AttachmentFailure>()
                     for (item in items) {
                         if (item.workspacePath != null) {
                             val result = checks[checked++]
@@ -1033,9 +1173,10 @@ class ChatViewModel(
                             val result = importAttachments(id, listOf(item.uri))
                             added += result.added
                             rejected += result.rejected
+                            failures += result.failures
                         }
                     }
-                    ImportResult(added, rejected)
+                    ImportResult(added, rejected, failures)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -1049,9 +1190,9 @@ class ChatViewModel(
                 }
                 releaseUnusedLibraryCopies()
             }
+            updateDraft(id) { it.copy(importing = false, rejected = r.failures) }
+            if (r.rejected.isNotEmpty()) return@launch
             val goal = withAttachments(text, r.added)
-            updateDraft(id) { it.copy(importing = false, rejected = r.rejected) }
-            if (items.any { it.workspacePath != null } && r.added.isEmpty() && r.rejected.isNotEmpty()) return@launch
             val now = _ui.value
             if (goal.isEmpty() || now.conversationId != id || id in _deleted.value) return@launch
             val currentAttachments = now.attachments
@@ -1100,7 +1241,7 @@ class ChatViewModel(
                 attachments = nextAttachments,
                 pip = gated(PipUi(visible = true)),
                 composer = ComposerMode.Busy,
-                followUpMode = if (nextAttachments.isNotEmpty()) FollowUpMode.Queue else FollowUpMode.Steer,
+                followUpMode = FollowUpMode.Queue,
                 // 这一句如果本来在排队条上乐观挂着、现在已经开始,就不能再显示一行
                 queued = it.queued.filterNot { q -> q.text == goal },
             )
@@ -1150,6 +1291,7 @@ class ChatViewModel(
 
     /** 切换任务进行中补充消息的默认去向;只影响下次发送,不改已经发出的消息。 */
     fun setFollowUpMode(mode: FollowUpMode) {
+        if (_ui.value.importing) return
         if (mode == FollowUpMode.Steer) {
             _ui.value.sharedDraft?.takeIf { it.image != null }?.let(::clearSharedImage)
         }
@@ -1184,6 +1326,20 @@ class ChatViewModel(
         if (!actions.cancelFollowUp(conversationId, id)) return false
         _ui.update { it.copy(queued = it.queued.filterNot { q -> q.id == id }) }
         return true
+    }
+
+    /** 把一条还没开始的排队改为当前任务的引导;竞争失败时保留或恢复排队。 */
+    fun guideQueued(id: String, check: Prerequisites.Check): Boolean {
+        val ui = _ui.value
+        if (ui.composer != ComposerMode.Busy) return false
+        val item = ui.queued.firstOrNull { it.id == id } ?: return false
+        if (!check.canStartTask) {
+            _ui.update { it.copy(blocked = check.blockers) }
+            return false
+        }
+        if (!cancelQueued(id)) return false
+        if (steer(item.text, check)) return true
+        return enqueue(item.text, check)
     }
 
     /**
@@ -1268,6 +1424,20 @@ class ChatViewModel(
         follow(conversationId, unpark(conversationId))
     }
 
+    /** 个人助手打开其委派任务：只切换展示，不启动另一项工作。 */
+    fun openPersonalTask(conversationId: String) {
+        refreshParallel()
+        lingerJob?.cancel()
+        if (conversationId != _ui.value.conversationId) parkLive()
+        val past = saved(conversationId)
+        liveIndex = -1
+        // 没有任务的对话不带别的任务的接管进度
+        _ui.update { ChatUi(conversationId = conversationId, exchanges = past, takeoverStage = Takeover.Stage.None) }
+        markCurrent(CurrentChat.Open(conversationId))
+        if (conversationId !in activeConversations.value) { unpark(conversationId); return }
+        follow(conversationId, unpark(conversationId))
+    }
+
     /**
      * 接上屏上这个对话正在跑的任务(不论从哪里开始的:这里、悬浮胶囊、定时任务)。没在跟时先摆好那一问一答
      * (切走时停着的 [p],或按任务的原话新起一条),再让服务显示它,并按服务此刻对外的各项补齐。
@@ -1286,7 +1456,7 @@ class ChatViewModel(
                     followUpMode = when {
                         it.attachments.isNotEmpty() -> FollowUpMode.Queue
                         it.draft().hasContent -> it.followUpMode
-                        else -> FollowUpMode.Steer
+                        else -> FollowUpMode.Queue
                     },
                     queued = it.queued.filterNot { q -> q.text == live.goal })
             }
@@ -1418,10 +1588,10 @@ class ChatViewModel(
         _ui.update { it.copy(pip = gated(it.pip)) }
     }
 
-    /** 浮层的一次性「恢复声音」:只发真实音频动作,不在界面伪造一个静音开关状态。 */
-    fun unmutePip() {
+    /** 浮层的声音开关:只发真实音频动作,方向由任务里的真实记录定,不在界面伪造开关状态。 */
+    fun togglePipSound() {
         val id = _ui.value.conversationId ?: return
-        actions.unmuteIn(id)
+        actions.togglePipSoundIn(id)
     }
 
     /** 分享切走前,把仍在等串行服务空闲的原任务交给服务排队;只取消界面里的等待协程,不取消任务。 */
@@ -1567,6 +1737,20 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * 打开某个对话并跳到指定消息。已经在这个对话里时只设跳转,不重新载入;
+     * 任务进行中且没开并行时打不开,跳转也不会留下,调用方可以用 [ChatUi.conversationId] 判断是否成功。
+     */
+    fun openConversationAt(id: String, target: ChatTarget) {
+        if (_ui.value.conversationId != id) openConversation(id)
+        if (_ui.value.conversationId == id) _jump.value = ChatJump(id, target, ++jumpSerial)
+    }
+
+    /** 聊天页滚到目标后清掉请求;期间又来了新请求时不要误清。 */
+    fun consumeJump(jump: ChatJump) {
+        _jump.update { if (it == jump) null else it }
+    }
+
     /** 切到某个对话;任务在跑时不切。 */
     fun openConversation(id: String) {
         if (_ui.value.conversationId == id) return
@@ -1670,7 +1854,9 @@ class ChatViewModel(
         val prefill = retryText(raw)
         updateDraft(targetId) {
             it.copy(input = prefill, attachments = accepted,
-                rejected = if (_ui.value.conversationId == targetId) emptyList() else failures.map { failure -> failure.path.substringAfterLast('/') })
+                rejected = if (_ui.value.conversationId == targetId) emptyList() else failures.map { failure ->
+                    AttachmentFailure(failure.path.substringAfterLast('/'), AttachmentFailureReason.IO_ERROR)
+                })
         }
         val screen = UserScreenMessage.parse(AttachmentMessage.parse(QuoteMessage.words(AttachedPage.words(raw))).words).hasScreen
         return BranchRetry(targetId, prefill, screen || failures.isNotEmpty(), failures, screenNeedsReattach = screen)
@@ -1719,14 +1905,57 @@ class ChatViewModel(
      * 停任务、删定时任务、删文件在后台做(见 `ConversationDeleter`)。
      */
     fun deleteConversation(id: String) {
-        if (!deleting.add(id)) return
-        drafts.update { it - id }
-        sharedDrafts?.clear(id)
-        _deleted.update { it + id }
-        if (id == _ui.value.conversationId) startOver(id) else unpark(id)
+        deleteConversations(listOf(id), report = false)
+    }
+
+    /** 一次批量删除的进度和结果;侧栏在底部显示,提示完调 [clearDeleteBatch]。 */
+    private val _deleteBatch = MutableStateFlow<DeleteBatch?>(null)
+    val deleteBatch: StateFlow<DeleteBatch?> = _deleteBatch.asStateFlow()
+
+    fun clearDeleteBatch() {
+        _deleteBatch.value = null
+    }
+
+    /**
+     * 用户在侧栏多选后一次删掉 [ids]:当场把它们从侧栏拿掉,再逐条在后台删。
+     * 删的时候 [deleteBatch] 里写着一共几条、删完几条、失败几条,侧栏据此显示进度和结果。
+     */
+    fun deleteConversations(ids: Collection<String>) {
+        deleteConversations(ids, report = true)
+    }
+
+    private fun deleteConversations(ids: Collection<String>, report: Boolean) {
+        val targets = ids.filter { deleting.add(it) }
+        if (targets.isEmpty()) return
+        targets.forEach { id ->
+            drafts.update { it - id }
+            sharedDrafts?.clear(id)
+            _deleted.update { it + id }
+            if (id == _ui.value.conversationId) startOver(id) else unpark(id)
+        }
         releaseUnusedLibraryCopies()
+        if (report) _deleteBatch.value = DeleteBatch(targets.size, 0, 0)
         scope.launch {
-            try { removeConversation(id) } catch (e: CancellationException) { throw e } catch (e: Exception) { } finally { deleting -= id }
+            var done = 0
+            var failed = 0
+            // 一条删不掉(存储读写失败等)不挡住后面的;最后照实说几条失败
+            targets.forEach { id ->
+                try {
+                    deviceImports[id]?.join()
+                    removeConversation(id)
+                } catch (e: CancellationException) {
+                    val unfinished = targets.drop(done).toSet()
+                    deleting.removeAll(unfinished)
+                    _deleted.update { it - unfinished }
+                    throw e
+                } catch (_: Exception) {
+                    failed++
+                    _deleted.update { it - id }
+                }
+                deleting -= id
+                done++
+                if (report) _deleteBatch.value = DeleteBatch(targets.size, done, failed)
+            }
         }
     }
 
@@ -1740,6 +1969,50 @@ class ChatViewModel(
     fun setPinned(id: String, pinned: Boolean) {
         if (id in _deleted.value) return
         runCatching { store.setPinned(id, pinned, clock()) }
+    }
+
+    /**
+     * 侧栏里归档对话 [id]:从列表收起,内容、工作区、定时任务都不动。
+     * 归档的是屏上这个对话时,先确认现在能换对话,再换成一个新的空对话(草稿留着,取消归档后接着用)。
+     * 跑着或排着任务的对话不归档,返回 false。
+     */
+    fun archiveConversation(id: String): Boolean {
+        if (id in _deleted.value || id in deleting) return false
+        if (id in activeConversations.value) return false
+        val current = _ui.value.conversationId == id
+        if (current) {
+            refreshParallel()
+            if (busy()) return false
+        }
+        val ok = runCatching { store.setArchived(id, true, clock()) }.getOrDefault(false)
+        // 先归档再换:换到新对话时侧栏重读,原来那个已经不在列表里了
+        if (ok && current) newConversation()
+        return ok
+    }
+
+    /** 侧栏里取消归档对话 [id];它回到原来的位置(置顶的还回置顶)。 */
+    fun unarchiveConversation(id: String) {
+        if (id in _deleted.value) return
+        runCatching { store.setArchived(id, false) }
+    }
+
+    /** 归档视图里多选恢复:一条条取消归档;已经删掉的跳过。 */
+    fun unarchiveConversations(ids: Collection<String>) {
+        ids.filter { it !in _deleted.value }.forEach { runCatching { store.setArchived(it, false) } }
+    }
+
+    /**
+     * 普通侧栏里多选后一次归档 [ids]:未保存首轮的草稿、在跑的、删掉的、当前正在看的跳过
+     * (当前对话归档要换新对话,批量里不悄悄换)。返回实际归档了几个。
+     */
+    fun archiveConversations(ids: Collection<String>): Int {
+        val current = _ui.value.conversationId
+        // 与侧栏判断已保存对话的依据一致,不能只看 ID:未发送的草稿也有 ID。
+        val savedIds = store.list(includeArchived = true).mapTo(mutableSetOf()) { it.id }
+        return ids.count { id ->
+            id in savedIds && id != current && id !in _deleted.value && id !in deleting && id !in activeConversations.value &&
+                runCatching { store.setArchived(id, true, clock()) }.getOrDefault(false)
+        }
     }
 
     /** 屏上的对话被删了:不再跟它的任务(还没交给服务的开始直接作废),换成新的空对话。 */
@@ -1789,7 +2062,7 @@ class ChatViewModel(
                     followUpMode = when {
                         it.attachments.isNotEmpty() -> FollowUpMode.Queue
                         it.draft().hasContent -> it.followUpMode
-                        else -> FollowUpMode.Steer
+                        else -> FollowUpMode.Queue
                     },
                     queued = it.queued.filterNot { q -> q.text == goal })
             }
@@ -1946,6 +2219,9 @@ class ChatViewModel(
          * 动作写「点击 · 微信」,那一步模型写了话就用它的话;没成功只说没成功,不显示错误码。
          * 最后一行的状态跟着这一问一答:在跑、等你、结束。
          */
+        /** 没办成的一步下面那行小字:按规矩没收的说原因,其余说「没成功」。 */
+        private fun failedLabel(a: RunEvent.Activity) = ChatCopy.declinedLabel(a.effect) ?: tr(R.string.step_failed)
+
         internal fun rows(ex: Exchange, toolLabel: (String) -> String, appLabel: (String) -> String): List<StepRow> {
             val out = mutableListOf<StepRow>()
             val said = mutableSetOf<Int>()
@@ -1956,13 +2232,13 @@ class ChatViewModel(
                     if (where == null && !a.failed) continue
                     val text = if (where == null) toolLabel(a.label)
                         else a.title?.takeIf(String::isNotBlank)?.let { tr(R.string.step_viewed_part, where, it) } ?: tr(R.string.step_viewed, where)
-                    val subtitle = if (a.failed) tr(R.string.step_failed) else ""
+                    val subtitle = if (a.failed) failedLabel(a) else ""
                     val last = out.lastOrNull()
                     if (last?.title != text || last.subtitle != subtitle) out += StepRow(a.step, text, subtitle, StepState.Ok)
                 } else {
                     val reason = if (said.add(a.step)) ex.notes[a.step].orEmpty() else ""
                     val title = listOfNotNull(toolLabel(a.label), where).joinToString(" · ")
-                    out += StepRow(a.step, title, if (a.failed) tr(R.string.step_failed) else "", StepState.Ok, reason)
+                    out += StepRow(a.step, title, if (a.failed) failedLabel(a) else "", StepState.Ok, reason)
                 }
             }
             if (out.isEmpty()) return out
@@ -2081,6 +2357,7 @@ class ToolLabels(private val tools: ToolIndex, private val legacy: LegacyNames =
     companion object {
         /** 工具声明里的 label → 界面文字;中文资源与 label 一字不差(ToolLabelsTest 核对每个工具都有)。 */
         val TOOL_LABELS: Map<String, Int> = mapOf(
+            "短信验证码登录" to R.string.sms_login_tool,
             "查看已装的 App" to R.string.tool_list_apps,
             "打开 App" to R.string.tool_open_app,
             "分享文字到 App" to R.string.tool_share_text,
@@ -2098,12 +2375,21 @@ class ToolLabels(private val tools: ToolIndex, private val legacy: LegacyNames =
             "多点手势" to R.string.tool_gesture,
             "系统命令" to R.string.tool_shell,
             "root 命令" to R.string.tool_root,
+            "通话状态" to R.string.calls_tool_state,
+            "拨打电话" to R.string.calls_tool_dial,
+            "AI 接听" to R.string.calls_answer,
+            "挂断电话" to R.string.calls_tool_hangup,
+            "人工接管" to R.string.calls_takeover,
             "查找界面控件" to R.string.tool_find_element,
             "采集多屏内容" to R.string.tool_collect,
             "连续操作手机" to R.string.tool_phone_run,
+            "查看设备文件" to R.string.tool_list_device_files,
+            "搜索设备文件" to R.string.tool_search_device_files,
+            "复制设备文件" to R.string.tool_copy_device_file,
             "处理文件" to R.string.tool_process_files,
             "运行自带脚本" to R.string.tool_run_script,
             "读文件" to R.string.tool_read_file,
+            "看图" to R.string.tool_view_image,
             "写文件" to R.string.tool_write_file,
             "搜索文件" to R.string.tool_search_files,
             "导出文件" to R.string.tool_export_file,
@@ -2126,8 +2412,23 @@ class ToolLabels(private val tools: ToolIndex, private val legacy: LegacyNames =
             "查看 App/网站知识" to R.string.tool_read_knowledge,
             "查看技能" to R.string.tool_read_skill,
             "保存技能" to R.string.tool_save_skill,
+            "查找记忆" to R.string.tool_memory_search,
+            "写入记忆" to R.string.tool_memory_save,
+            "修改记忆" to R.string.tool_memory_edit,
             "查看设置" to R.string.tool_list_settings,
             "改设置" to R.string.tool_set_setting,
+            "查看自身状态" to R.string.tool_mika_status,
+            "打开 Mika 的页面" to R.string.tool_mika_open_screen,
+            "打开文件" to R.string.tool_mika_open_file,
+            "发通知" to R.string.tool_mika_notify,
+            "复制文字" to R.string.tool_mika_copy,
+            "在浏览器里打开" to R.string.tool_mika_open_in_browser,
+            "在浏览器里搜索" to R.string.tool_mika_search_in_browser,
+            "查看网站登录" to R.string.tool_mika_sites,
+            "查看正在看的网页" to R.string.tool_mika_user_page,
+            "请你登录网站" to R.string.tool_mika_login_site,
+            "核对登录" to R.string.tool_mika_confirm_login,
+            "常用网站" to R.string.tool_mika_favorites,
             "说明没办成的原因" to R.string.tool_explain_failure,
             "问你一个问题" to R.string.tool_ask_user,
             "请你接手" to R.string.tool_takeover,

@@ -45,6 +45,7 @@ class AboutScreenTest {
     private class Calls {
         val urls = mutableListOf<String>()
         var checks = 0
+        var saves = 0
         var licenses = 0
     }
 
@@ -57,7 +58,7 @@ class AboutScreenTest {
                 AboutScreen(
                     versionName = "0.1.0", build = "abc1234", beta = true, update = update, issueUrl = "issue://prefilled",
                     onCheck = { calls.checks++ }, onOpenUrl = { calls.urls += it },
-                    onOpenLicense = { calls.licenses++ }, onBack = {},
+                    onSaveQr = { calls.saves++; true }, onOpenLicense = { calls.licenses++ }, onBack = {},
                     diagnostics = { sampleDiagnostics },
                 )
             }
@@ -78,7 +79,7 @@ class AboutScreenTest {
         compose.onNodeWithText("版本 0.1.0").assertIsDisplayed()
         compose.onNodeWithText("Beta").assertIsDisplayed()
         compose.onNodeWithText("· 构建 abc1234").assertIsDisplayed()
-        for (t in listOf("检查更新", "更新记录", "反馈问题", "开源仓库", "使用说明与参与方式", AboutCopy.DATA_NOTE, AboutCopy.AUTHOR)) {
+        for (t in listOf("检查更新", "更新记录", "联系作者", "关注作者", "反馈问题", "开源仓库", "使用说明与参与方式", AboutCopy.DATA_NOTE, AboutCopy.AUTHOR)) {
             scrollTo(t)
             compose.onNodeWithText(t).assertIsDisplayed()
         }
@@ -89,11 +90,11 @@ class AboutScreenTest {
     @Test
     fun externalRowsOpenLinks() {
         val calls = about()
-        for (t in listOf("开源仓库", "使用说明与参与方式")) {
+        for (t in listOf("关注作者", "开源仓库", "使用说明与参与方式")) {
             scrollTo(t)
             compose.onNodeWithText(t).performClick()
         }
-        assertEquals(listOf(MikaLinks.REPO, MikaLinks.README), calls.urls)
+        assertEquals(listOf(MikaLinks.X, MikaLinks.REPO, MikaLinks.README), calls.urls)
     }
 
     @Test
@@ -133,6 +134,20 @@ class AboutScreenTest {
             clip = cm.primaryClip?.getItemAt(0)?.text?.toString()
         }
         assertEquals(sampleDiagnostics, clip)
+    }
+
+    /** 联系作者面板:作者微信码、提示和保存按钮都在,点保存走一次回调。 */
+    @Test
+    fun groupRowOpensGroupSheet() {
+        val calls = about()
+        scrollTo("联系作者")
+        compose.onNodeWithText("联系作者").performClick()
+        compose.awaitOne(AboutCopy.GROUP_SHEET_SUB).assertIsDisplayed()
+        compose.onNodeWithTag("wechat-qr").assertExists()
+        compose.onNodeWithText(AboutCopy.GROUP_HINT).assertExists()
+        compose.onNodeWithText(AboutCopy.SAVE_QR).performClick()
+        compose.waitForIdle()
+        assertEquals(1, calls.saves)
     }
 
     @Test
@@ -240,49 +255,50 @@ class AboutScreenTest {
         assertEquals(listOf(MikaLinks.RELEASES), calls.urls)
     }
 
-    /** 侧栏最底下一行两个:设置靠左、关于 Mika 靠右(红点在最右边);有新版时关于带红点。 */
+    /** 侧栏最底下一行:设置靠左;有新版时右边才出现「更新」带红点(红点在最右边),点它进「关于 Mika」。 */
     @Test
-    fun drawerFooterHasSettingsAndAbout() {
+    fun drawerFooterShowsUpdateOnlyWhenAvailable() {
         val calls = mutableListOf<String>()
         compose.setContent {
             MikaTheme {
                 ChatDrawer(
                     Prerequisites.Check(emptyList()), DrawerSections(emptyList(), emptyList()), canSwitch = true,
-                    onNew = {}, onPlans = {}, onMemory = {}, onBrowser = {},
+                    onNew = {},
                     onSettings = { calls += "settings" }, onOpen = {},
                     onAbout = { calls += "about" }, aboutDot = true,
                 )
             }
         }
         compose.onNodeWithText("设置").assertIsDisplayed()
-        compose.onNodeWithText("关于 Mika").assertIsDisplayed()
+        compose.onNodeWithText("更新").assertIsDisplayed()
         compose.onNodeWithTag("update-dot", useUnmergedTree = true).assertExists()
         val footer = compose.onNodeWithTag("drawer-footer").getUnclippedBoundsInRoot()
         // 量文字本身(未合并的树):合并后的可点行节点比文字宽,量它判断不了左右半边
         val settings = compose.onNodeWithText("设置", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        val about = compose.onNodeWithText("关于 Mika", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val update = compose.onNodeWithText("更新", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val dot = compose.onNodeWithTag("update-dot", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val mid = (footer.left + footer.right) / 2
         assertTrue(settings.right < mid)
-        assertTrue(about.left > mid)
-        // 关于那一项贴着右边:红点离行的右边只隔两层内边距(行 12dp + 项 12dp)
+        assertTrue(update.left > mid)
+        // 更新那一项贴着右边:红点离行的右边只隔两层内边距(行 12dp + 项 12dp)
         assertTrue(footer.right - dot.right <= 25.dp)
         compose.onNodeWithText("设置").performClick()
-        compose.onNodeWithText("关于 Mika").performClick()
+        compose.onNodeWithText("更新").performClick()
         assertEquals(listOf("settings", "about"), calls)
     }
 
     @Test
-    fun drawerFooterNoDotWithoutUpdate() {
+    fun drawerFooterNoUpdateEntryWithoutUpdate() {
         compose.setContent {
             MikaTheme {
                 ChatDrawer(
                     Prerequisites.Check(emptyList()), DrawerSections(emptyList(), emptyList()), canSwitch = true,
-                    onNew = {}, onPlans = {}, onMemory = {}, onBrowser = {}, onSettings = {}, onOpen = {},
+                    onNew = {}, onSettings = {}, onOpen = {},
                 )
             }
         }
-        compose.onNodeWithText("关于 Mika").assertIsDisplayed()
+        compose.onNodeWithText("设置").assertIsDisplayed()
+        compose.onNodeWithText("更新").assertDoesNotExist()
         compose.onAllNodesWithTag("update-dot", useUnmergedTree = true).assertCountEquals(0)
     }
 

@@ -6,7 +6,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.ResolverStyle
 
-/** 手动编辑器支持的重复方式；更复杂的多钟点规则仍由后续数据模型扩展承接。 */
+/** 手动编辑器和模型编辑共用的重复方式。 */
 enum class PlanRepeat { Once, Interval, Daily, Weekly }
 
 enum class PlanValidation {
@@ -72,7 +72,7 @@ fun TriggerDefinition.toPlanDraft(): PlanDraft {
         },
         firstAt = formatPlanEditorTime(nextAtMs, zone),
         intervalMinutes = intervalMs?.let { (it / 60_000).toString() } ?: "60",
-        clock = calendarTime ?: "09:00",
+        clock = calendarClocks().takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "09:00",
         zone = zone,
         weekdays = calendarDays.toSet(),
         whenIdle = idleOnly,
@@ -80,6 +80,28 @@ fun TriggerDefinition.toPlanDraft(): PlanDraft {
         notifyWhen = notifyWhen,
         cooldownMinutes = cooldownMs?.let { (it / 60_000).toString() }.orEmpty(),
     )
+}
+
+fun TriggerDefinition.toCopyPlanDraft(nowMs: Long): PlanDraft {
+    val draft = toPlanDraft()
+    val firstAt = when {
+        draft.repeat == PlanRepeat.Daily || draft.repeat == PlanRepeat.Weekly -> draft.firstAt
+        nextAtMs > nowMs -> copyFirstAt(nextAtMs, draft.zone)
+        intervalMs != null -> copyFirstAt(upcoming(this, nowMs + 1, 1).single(), draft.zone)
+        else -> newPlanDraft(nowMs, ZoneId.of(draft.zone)).firstAt
+    }
+    return draft.copy(firstAt = firstAt, enabled = false)
+}
+
+/**
+ * 复制时「首次执行」用页面上的当地时间格式;带秒的计划向上取整到下一分钟,
+ * 免得截掉秒后落到当前时刻之前,保存时被判成「时间不在将来」。
+ */
+private fun copyFirstAt(atMs: Long, zone: String): String {
+    val time = Instant.ofEpochMilli(atMs).atZone(ZoneId.of(zone))
+    val rounded = if (time.second == 0 && time.nano == 0) atMs
+        else time.withSecond(0).withNano(0).plusMinutes(1).toInstant().toEpochMilli()
+    return formatPlanEditorTime(rounded, zone)
 }
 
 /**
@@ -92,6 +114,7 @@ fun editedTrigger(
     newId: String,
     newThreadId: String,
     nowMs: Long,
+    source: TriggerSource = TriggerSource.User,
 ): TriggerDefinition {
     val content = draft.content.trim()
     if (content.isEmpty()) invalid(PlanValidation.MissingContent)
@@ -105,33 +128,48 @@ fun editedTrigger(
     val nextAt: Long
     var intervalMs: Long? = null
     var calendarTime: String? = null
+    var calendarTimes: List<String> = emptyList()
     var calendarZone: String? = null
     var calendarDays: List<Int> = emptyList()
     when (draft.repeat) {
         PlanRepeat.Once, PlanRepeat.Interval -> {
-            nextAt = try {
-                LocalDateTime.parse(draft.firstAt.trim(), EDIT_TIME).atZone(zone).toInstant().toEpochMilli()
+            val firstAt = draft.firstAt.trim()
+            // 表单只显示到分钟；当地时间和时区未修改时保留原计划的秒与毫秒。
+            val originalTime = original?.takeIf {
+                it.calendarTime == null && zone.id == (it.calendarZone ?: ZoneId.systemDefault().id) &&
+                    firstAt == formatPlanEditorTime(it.nextAtMs, zone.id)
+            }?.nextAtMs
+            nextAt = originalTime ?: try {
+                // 模型沿用 ISO 时间以保留秒和偏移；页面继续使用当地 yyyy-MM-dd HH:mm。
+                runCatching { Instant.parse(firstAt).toEpochMilli() }.getOrElse {
+                    LocalDateTime.parse(firstAt, EDIT_TIME).atZone(zone).toInstant().toEpochMilli()
+                }
             } catch (e: Exception) {
                 invalid(PlanValidation.InvalidFirstTime)
             }
-            if (nextAt <= nowMs) invalid(PlanValidation.TimeNotFuture)
             if (draft.repeat == PlanRepeat.Interval) {
                 val minutes = draft.intervalMinutes.trim().toLongOrNull()
                 if (minutes == null || minutes !in 1..525_600) invalid(PlanValidation.InvalidInterval)
                 intervalMs = minutes * 60_000
             }
+            val unchangedTime = original != null && original.calendarTime == null &&
+                original.nextAtMs == nextAt && original.intervalMs == intervalMs &&
+                (!draft.enabled || original.enabled)
+            if (nextAt <= nowMs && !unchangedTime) invalid(PlanValidation.TimeNotFuture)
         }
         PlanRepeat.Daily, PlanRepeat.Weekly -> {
             val days = if (draft.repeat == PlanRepeat.Weekly) draft.weekdays.sorted() else emptyList()
             if (draft.repeat == PlanRepeat.Weekly && (days.isEmpty() || days.any { it !in 1..7 })) {
                 invalid(PlanValidation.InvalidWeekdays)
             }
-            nextAt = try {
-                nextCalendarAt(draft.clock.trim(), zone.id, days, nowMs)
+            val clocks = try {
+                normalizedCalendarTimes(draft.clock.split(',', '，', '、', ';', '；', '،', '\n'))
             } catch (e: Exception) {
                 invalid(PlanValidation.InvalidClock)
             }
-            calendarTime = draft.clock.trim()
+            nextAt = nextCalendarAt(clocks, zone.id, days, nowMs)
+            calendarTime = clocks.first()
+            calendarTimes = clocks.takeIf { it.size > 1 }.orEmpty()
             calendarZone = zone.id
             calendarDays = days
         }
@@ -142,7 +180,7 @@ fun editedTrigger(
         minutes * 60_000
     } else null
     val reminderText = content.takeIf { draft.reminder }
-    val base = original ?: TriggerDefinition(newId, newThreadId, content, nextAt)
+    val base = original ?: TriggerDefinition(newId, newThreadId, content, nextAt, source = source)
     val updated = base.copy(
         goal = content,
         nextAtMs = nextAt,
@@ -154,6 +192,7 @@ fun editedTrigger(
         calendarTime = calendarTime,
         calendarZone = calendarZone,
         calendarDays = calendarDays,
+        calendarTimes = calendarTimes,
         notifyWhen = draft.notifyWhen,
         cooldownMs = cooldownMs,
     )

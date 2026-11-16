@@ -4,6 +4,7 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.os.ParcelFileDescriptor;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.view.Surface;
 
 // 运行在 shell 身份(uid 2000)进程里的常驻服务:经无线调试拉起的内置助手。
@@ -122,6 +123,26 @@ interface IMikaShell {
 
     // 对 SystemUI 做一次定向点击,用于生物识别优先锁屏页上「用密码解锁」这类回退按钮;不含凭据。
     boolean revealDeviceCredentialTap(int x, int y) = 51;
+
+    // 通话音频独立于通话控制。0=自动,1=直连运营商音频,2=Android PSTN 重定向。
+    Bundle probeCallAudio(int mode) = 52;
+    // 仅 ACTIVE 运营商通话；owner 每通独立，死亡时停止。下行可读/上行可写的匿名管道均为单声道 PCM16LE。
+    Bundle openCallAudio(int mode, IBinder owner) = 53;
+    void stopCallAudio(IBinder owner) = 54;
+    boolean flushCallAudio(IBinder owner) = 55;
+    Bundle callAudioStats(IBinder owner) = 56;
+
+    // 当前用户的 /sdcard 或 /storage/emulated/<user> 绝对路径,按名称排序;首次 afterName=null,limit 为 1..128。
+    // status=ok/not_found/denied/not_directory/invalid/io_error;成功时 names、types
+    // (0=其他或链接 1=普通文件 2=目录)等长,next 非空时传给下一页;目录变化时不保证快照。
+    Bundle listFiles(String path, String afterName, int limit) = 57;
+    // 只读打开普通文件;结果 status=ok/not_found/denied/not_file/invalid/io_error,
+    // 成功时 fd 为 ParcelFileDescriptor,调用方负责关闭。路径按 shell 的权限访问。
+    Bundle openFile(String path) = 58;
+    // 只读、有界搜索；返回 status、paths、visited、truncated 和可选 reason。
+    Bundle searchFiles(String path, String name, String extension, long modifiedAfter, long modifiedBefore, int maxDepth, int maxEntries, int timeoutMs) = 59;
+    // Replace the device-file bridge policy. Empty roots deny all access; protocol and revision are separate.
+    Bundle setDeviceFilePolicy(int protocol, String session, long revision, in String[] roots, in boolean[] recursive) = 60;
 
     // 沿用早先定下的销毁事务号;AIDL 要求要么全部方法编号要么都不编号
     void destroy() = 16777114;

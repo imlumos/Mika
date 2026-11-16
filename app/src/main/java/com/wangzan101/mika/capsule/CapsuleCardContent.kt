@@ -53,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,6 +92,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -120,7 +122,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 private val CardShape = RoundedCornerShape(22.dp)
 private val ScreenShape = RoundedCornerShape(14.dp)
 private val BubbleShape = RoundedCornerShape(16.dp, 16.dp, 5.dp, 16.dp)
-private val CardWidth = 322.dp
 private val ScreenWidth = 104.dp
 private val ZoomWidth = 300.dp
 private val Title = TextStyle(fontSize = 14.5.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold)
@@ -268,6 +269,7 @@ fun CapsuleCard(
  * 缩放和透明度从 [origin] 那边长出来(按此刻的大小给出方位,例如卡片从胶囊那边),真开始出来时调 [onOpened];
  * [open] 变成 false 时缩回那边、淡掉,做完调 [onClosed]。
  * 只动图层,不改布局,也就不逐帧改窗口。关了动画时直接到位,收起时马上调 [onClosed]。
+ * 展开、收起都等不了没完没了的帧:浮层收不到下一帧时超时就位(见 [runOverlayOpen]、[runOverlayClose]),不把卡片留在半开。
  */
 @Composable
 fun OverlayMotion(
@@ -284,10 +286,19 @@ fun OverlayMotion(
                 shown.snapTo(1f)
                 opened()
             } else {
-                // 刚出来那一帧要排版、窗口换大小,最慢:等它画完再起步,动画的头几帧不被它吃掉
-                if (shown.value == 0f) repeat(SETTLE_FRAMES) { withFrameNanos { } }
-                opened()
-                shown.animateTo(1f, tween(CARD_IN_MS, easing = MikaMotion.Decelerate))
+                var openedCalled = false
+                var finished = false
+                runOverlayOpen(still) {
+                    // 刚出来那一帧要排版、窗口换大小,最慢:等它画完再起步,动画的头几帧不被它吃掉
+                    if (shown.value == 0f) repeat(SETTLE_FRAMES) { withFrameNanos { } }
+                    openedCalled = true
+                    opened()
+                    shown.animateTo(1f, tween(CARD_IN_MS, easing = MikaMotion.Decelerate))
+                    finished = true
+                }
+                // 帧停了(浮层收不到下一帧)时上面走不完:值归位、回调补上,卡片不留在半开的缩放上,窗口状态也不卡在 opening(#323)
+                if (!finished) shown.snapTo(1f)
+                if (!openedCalled) opened()
             }
         } else {
             runOverlayClose(still) {
@@ -324,9 +335,21 @@ internal suspend fun runOverlayClose(reduceMotion: Boolean, animate: suspend () 
     withTimeoutOrNull((CARD_OUT_MS * scale).toLong() + CLOSE_GRACE_MS) { animate() }
 }
 
+/**
+ * 等展开动画走完,但浮层拿不到后续帧时也必须落位:与收起([runOverlayClose])同一形状,帧停超时后由调用处
+ * 直接把值归位并补上展开回调。等待时长跟随系统的动画速度;极大的慢动作倍率最多按十倍算,避免卡在中间缩放的时间无限长。
+ */
+internal suspend fun runOverlayOpen(reduceMotion: Boolean, animate: suspend () -> Unit) {
+    if (reduceMotion) return
+    val scale = currentCoroutineContext()[MotionDurationScale]?.scaleFactor
+        ?.takeIf { it.isFinite() && it > 0f }?.coerceAtMost(10f) ?: 1f
+    withTimeoutOrNull((CARD_IN_MS * scale).toLong() + OPEN_GRACE_MS) { animate() }
+}
+
 private const val CARD_IN_MS = 240
 private const val CARD_OUT_MS = 180
 private const val CLOSE_GRACE_MS = 500L
+private const val OPEN_GRACE_MS = 500L
 private const val CARD_FROM_SCALE = 0.6f
 private const val SETTLE_FRAMES = 2
 
@@ -521,8 +544,14 @@ private val KeySize = 34.dp
 
 private const val TITLE_MAX = 12
 
+/** 卡片此刻的缩放档位:由 [CapsuleController] 随设置流装进(缩放本身靠换 [LocalDensity],见 [Density.zoomed])。 */
+val LocalCapsuleCardScale = staticCompositionLocalOf { CapsuleCardScale.DEFAULT }
+
+/** 卡片缩放:dp 与 sp 等比放大(哪个分量起作用以 CapsuleCardScaleDensityTest 的实测为准)。 */
+internal fun Density.zoomed(factor: Float): Density = Density(density * factor, fontScale * factor)
+
 @Composable
-private fun cardWidth() = minOf(CardWidth, (LocalConfiguration.current.screenWidthDp - 24).coerceAtLeast(240).dp)
+private fun cardWidth() = LocalCapsuleCardScale.current.width(LocalConfiguration.current.screenWidthDp)
 
 /** 卡片的底:[fixed] 时就是 [height] 高(对话卡片),否则按内容高、最多 [height](任务卡片)。 */
 @Composable

@@ -205,6 +205,21 @@ class UserBrowser private constructor(private val app: Context) {
     /** 平常浏览打开网址;打不开时返回原因。 */
     fun open(url: String): String? = load(url, null)
 
+    /** 在新标签打开一页;[select] 为 false 时留在后台,不切过去。打不开时返回原因。 */
+    fun openInNewTab(url: String, select: Boolean): String? {
+        refusal(url)?.let { return it }
+        val prev = tab
+        newTab()
+        val error = open(url)
+        if (error != null) {
+            tab?.let { closeTab(it.id) }
+            prev?.let { selectTab(it.id) }
+            return error
+        }
+        if (!select && prev != null) selectTab(prev.id)
+        return null
+    }
+
     /** 打开常用网站:还没登录的走「给 Mika 登录」,照 Mika 办事时的那一版打开。 */
     fun openFavorite(site: FavoriteSite): String? =
         load("https://${site.host}/", site.host.takeIf { BrowserIdentity.loginFlow(site) })
@@ -221,6 +236,9 @@ class UserBrowser private constructor(private val app: Context) {
         loginFor[t] = null
         navigate(t, url)
     }
+
+    /** 「给 Mika 登录」此刻要登录的网站;平常浏览为 null。只在主线程调用。 */
+    fun loginHost(): String? = tab?.let { loginFor[it] }
 
     /**
      * 「给 Mika 登录」里点了「登录好了」:看一眼页面。看出还没登录时提示一句;看出已登录、或看不出来(信用户的话)时
@@ -487,10 +505,10 @@ class UserBrowser private constructor(private val app: Context) {
     // ---------- 在这一页上问 Mika ----------
 
     /** 此刻看着的这一页(给 Mika 的说明用);没有打开的网页为 null。 */
-    fun pageInfo(): com.wangzan101.mika.core.cap.web.AttachedPage.Page? {
+    fun pageInfo(): com.wangzan101.mika.core.agent.AttachedPage.Page? {
         val url = currentUrl()?.takeIf { it.startsWith("http") } ?: return null
         val title = tab?.view?.title?.takeIf { it != url }.orEmpty().ifEmpty { _page.value?.title.orEmpty() }
-        return com.wangzan101.mika.core.cap.web.AttachedPage.Page(url, title)
+        return com.wangzan101.mika.core.agent.AttachedPage.Page(url, title)
     }
 
     /** 读用户在页面上选中的字,交给 [onText](没选、读不到为 null)。 */

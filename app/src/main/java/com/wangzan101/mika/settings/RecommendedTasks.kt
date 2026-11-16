@@ -84,6 +84,17 @@ class RecommendedTaskStore(private val file: File, private val ids: () -> String
         return commit(_tasks.value.filterNot { it.id == id })
     }
 
+    /** 按拖动开始时看到的完整 ID 列表排序，避免并发增删时丢失任务。 */
+    @Synchronized
+    fun reorder(ids: List<String>): RecommendedTaskError? {
+        guard()?.let { return it }
+        val current = _tasks.value
+        if (ids.size != current.size || ids.toSet() != current.map { it.id }.toSet()) return RecommendedTaskError.SaveFailed
+        val byId = current.associateBy { it.id }
+        val reordered = ids.map { byId.getValue(it) }
+        return if (reordered == current) null else commit(reordered)
+    }
+
     /** 用户明确不要读不出来的旧文件时,换成空列表。 */
     @Synchronized
     fun discardUnreadable(): RecommendedTaskError? {
@@ -173,7 +184,7 @@ class RecommendedTaskStore(private val file: File, private val ids: () -> String
     }
 
     companion object {
-        const val FILE = "recommended-tasks.json"
+        const val FILE = "recommended-tasks-v2.json"
         const val TITLE_MAX = 500
         const val PROMPT_MAX = 8_000
         const val MAX_TASKS = 50

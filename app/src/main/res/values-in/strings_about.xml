@@ -2,6 +2,7 @@
 <resources>
     <string name="about_tagline">Asisten pribadi di ponsel Anda, yang mengerjakan banyak hal untuk Anda</string>
     <string name="about_check">Periksa pembaruan</string>
+    <string name="drawer_update">Perbarui</string>
     <string name="about_check_sub">Dapatkan versi baru dari GitHub Releases</string>
     <string name="about_check_sub_new">Versi baru tersedia</string>
     <string name="about_up_to_date">Sudah terbaru</string>
@@ -17,6 +18,16 @@
     <string name="about_feedback_sheet_sub">Menemukan masalah atau punya ide? Sampaikan ke pembuatnya lewat cara yang Anda suka.</string>
     <string name="about_feedback_github">Buka isu di GitHub</string>
     <string name="about_feedback_github_sub">Laporkan bug atau minta fitur, dan pantau perkembangannya</string>
+    <string name="about_group">Hubungi pembuat</string>
+    <string name="about_group_sub">WeChat</string>
+    <string name="about_group_sheet_title">Hubungi pembuat</string>
+    <string name="about_group_sheet_sub">Ngobrol soal cara pakai atau bagikan ide. Saat menambahkan di WeChat, sebutkan Mika di permintaan Anda</string>
+    <string name="about_group_hint">Tekan lama untuk menyimpan · atau pindai di WeChat</string>
+    <string name="about_save_qr">Simpan kode QR</string>
+    <string name="about_qr_saved">Kode QR disimpan ke Foto</string>
+    <string name="about_qr_save_failed">Gagal menyimpan. Ambil tangkapan layar saja.</string>
+    <string name="about_follow">Ikuti pembuat</string>
+    <string name="about_follow_sub">X %1$s, jadi yang pertama tahu fitur baru</string>
     <string name="about_repo">Kode sumber</string>
     <string name="about_repo_sub">%1$s · beri bintang ya</string>
     <string name="about_guide">Panduan &amp; cara berkontribusi</string>

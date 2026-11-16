@@ -15,13 +15,37 @@ object LocalHosts {
         val h = normalize(host)
         if (h.isEmpty()) return false
         if (h == "localhost" || h.endsWith(".localhost") || h.endsWith(".local")) return true
-        ipv4(h)?.let { (a, b) ->
-            return a == 127 || a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 169 && b == 254)
-        }
+        ipv4(h)?.let { (a, b) -> return privateIpv4(a, b) }
         if (':' in h) {
-            if (h == "::1") return true
+            // ::1 的完整写法也是本机回环
+            if (h == "::1" || h == "0:0:0:0:0:0:0:1") return true
+            // ::ffff:a.b.c.d 是 IPv4-mapped IPv6,按里面那段 IPv4 判断;本机模型服务常这样写
+            if (h.startsWith("::ffff:")) {
+                val (a, b) = ipv4(h.removePrefix("::ffff:")) ?: return false
+                return privateIpv4(a, b)
+            }
             val first = h.substringBefore(':').toIntOrNull(16) ?: return false
             return first and 0xfe00 == 0xfc00 || first and 0xffc0 == 0xfe80
+        }
+        return false
+    }
+
+    private fun privateIpv4(a: Int, b: Int) =
+        a == 127 || a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 169 && b == 254)
+
+    /**
+     * 是不是本机、局域网,或组网工具常用的 CGNAT 网段 100.64/10。
+     * Tailscale 这类 VPN 给设备分这段地址、流量已在网络层加密,明文 http 也安全;
+     * 所以「明文 http 可不可接受」这类判断把它当私有地址看。比 [isLocal] 多认这一段。
+     */
+    fun isPrivateOrMesh(host: String): Boolean {
+        if (isLocal(host)) return true
+        val h = normalize(host)
+        if (h.isEmpty()) return false
+        ipv4(h)?.let { (a, b) -> return a == 100 && b in 64..127 }
+        if (h.startsWith("::ffff:")) {
+            val (a, b) = ipv4(h.removePrefix("::ffff:")) ?: return false
+            return a == 100 && b in 64..127
         }
         return false
     }

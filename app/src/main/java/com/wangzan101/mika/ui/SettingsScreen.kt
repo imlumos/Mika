@@ -2,6 +2,8 @@ package com.wangzan101.mika.ui
 
 import com.wangzan101.mika.R
 import com.wangzan101.mika.i18n.tr
+import com.wangzan101.mika.i18n.trPlural
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.wangzan101.mika.settings.ProviderConnection
 import android.app.ActivityManager
@@ -24,9 +26,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.wangzan101.mika.BuildConfig
 import com.wangzan101.mika.cap.sandbox.SandboxState
 import com.wangzan101.mika.capsule.CapsuleMode
+import com.wangzan101.mika.capsule.CapsuleSetup
+import com.wangzan101.mika.cap.phone.a11y.ScreenAccessibility
 import com.wangzan101.mika.core.agent.SpeedFlags
 import com.wangzan101.mika.core.cap.sandbox.SandboxStatus
 import com.wangzan101.mika.core.model.ModelRole
@@ -50,6 +56,7 @@ import com.wangzan101.mika.ui.components.GroupCard
 import com.wangzan101.mika.ui.components.GroupLabel
 import com.wangzan101.mika.ui.components.ListRow
 import com.wangzan101.mika.ui.components.MikaButton
+import com.wangzan101.mika.ui.components.MikaSwitch
 import com.wangzan101.mika.ui.components.PageScaffold
 import com.wangzan101.mika.ui.components.PillTone
 import com.wangzan101.mika.ui.components.RowChevron
@@ -66,7 +73,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** 设置里能进入的子页面;[Home] 是设置首页,[Advanced] 集中放置连接、维护和工程能力。 */
-private enum class SettingsPage { Home, Advanced, AppAccess, PhoneOps, Wechat, DuringWork, Capsule, Language, Notifications, Recommendations, Sandbox, Recovery, SelfCheck, ComputerAccess, McpServers, Root, Developer, RunStats, Backup }
+private enum class SettingsPage { Home, Advanced, AppAccess, SmsLogin, PhoneOps, Calls, Wechat, DuringWork, Capsule, Language, Notifications, Recommendations, Sandbox, Plugins, Recovery, SelfCheck, ComputerAccess, McpServers, Root, Developer, DeviceDirectories, RunStats, Proactive, Backup }
 
 /**
  * 设置页:总状态卡 + 常用 / 我的数据 / 其他。高级与其他只增加一层,各子页返回来时的页面。
@@ -82,6 +89,10 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenModels: () -> Unit,
     onOpenMemory: (() -> Unit)? = null,
+    onOpenBrowser: () -> Unit = {},
+    onOpenFiles: () -> Unit = {},
+    onOpenPersonal: () -> Unit = {},
+    onOpenPlans: () -> Unit = {},
     /** 任务运行里的「自主模式」:当前值和换它的办法。 */
     autonomous: Boolean = false,
     onAutonomous: (Boolean) -> Unit = {},
@@ -112,15 +123,24 @@ fun SettingsScreen(
     val wechat = remember { (context.applicationContext as com.wangzan101.mika.MikaApp).wechat }
     val wechatState by wechat.state.collectAsState()
     val flags = remember { FeatureFlags.get(context) }
+    var personalStart by remember { mutableStateOf(flags.personalStart()) }
     var parallelMax by remember { mutableIntStateOf(flags.parallelMax()) }
     var keepScreenOn by remember { mutableStateOf(flags.keepScreenOn()) }
+    var showTaskCost by remember { mutableStateOf(flags.showTaskCost()) }
     var muteTarget by remember { mutableStateOf(flags.muteTarget()) }
     var operatingPace by remember { mutableStateOf(flags.operatingPace()) }
     var stepLimit by remember { mutableStateOf(flags.taskStepLimit()) }
     var tokenBudget by remember { mutableStateOf(flags.taskTokenBudget()) }
     var selfConfig by remember { mutableStateOf(flags.selfConfig()) }
-    var capsuleMode by remember { mutableStateOf(flags.capsuleMode()) }
+    var selfOperate by remember { mutableStateOf(flags.selfOperate()) }
+    var deviceFiles by remember { mutableStateOf(flags.deviceFiles()) }
+    var pipOperate by remember { mutableStateOf(flags.pipOperate()) }
+    var externalSchedule by remember { mutableStateOf(flags.externalSchedule()) }
+    var autoArchiveDays by remember { mutableStateOf(flags.autoArchiveDays()) }
+    var editingAutoArchive by remember { mutableStateOf(false) }
+    val capsuleMode by remember(flags) { flags.capsuleModeChanges() }.collectAsState(flags.capsuleMode())
     var capsuleIdleOpacity by remember { mutableStateOf(flags.capsuleIdleOpacity()) }
+    var capsuleCardScale by remember { mutableStateOf(flags.capsuleCardScale()) }
     // 换语言时界面会重建,这里每次进来读一次即可
     val language = remember { AppLanguage.current(context) }
     val runtimeLimit by (context.applicationContext as com.wangzan101.mika.MikaApp).taskState.parallelLimit.collectAsState()
@@ -144,6 +164,8 @@ fun SettingsScreen(
     val mcpNetworkOn by mcp.settings.enabled.collectAsState()
     val mcpUsbOn by mcp.usb.enabled.collectAsState()
     val mcpOn = mcpNetworkOn || mcpUsbOn
+    val pluginRegistry = remember { (context.applicationContext as com.wangzan101.mika.MikaApp).plugins }
+    val pluginRecords by pluginRegistry.plugins.collectAsState()
     val parallel = if (!speed.parallelTasks) null else ParallelSetting(
         parallelMax,
         ParallelCapability.detect(
@@ -151,13 +173,14 @@ fun SettingsScreen(
             secondDisplayFailed = runtimeLimit.reason == ParallelCapability.SECOND_DISPLAY_FAILED,
         ),
     )
-    // 开发者选项只在调试版和性能测试版里列出:发布版的各开关按评测结果统一定默认值
+    // 开发者选项只在调试版和性能测试版里列出:发布版的各开关按评测结果统一定默认值。
+    // 主动能力不在里面:入口在设置首页,每个版本都有,默认关着
     val showDeveloper = com.wangzan101.mika.record.DetailedTraces.supportedBuild
     val toHome = { page = SettingsPage.Home }
     val toAdvanced = { page = SettingsPage.Advanced }
     val back = {
         page = when (page) {
-            SettingsPage.RunStats -> SettingsPage.Developer
+            SettingsPage.RunStats, SettingsPage.DeviceDirectories -> SettingsPage.Developer
             SettingsPage.SelfCheck -> SettingsPage.Recovery
             SettingsPage.Sandbox, SettingsPage.Recovery, SettingsPage.ComputerAccess,
             SettingsPage.McpServers, SettingsPage.Root, SettingsPage.Developer -> SettingsPage.Advanced
@@ -168,7 +191,7 @@ fun SettingsScreen(
     if (page != SettingsPage.Home) BackHandler { back() }
 
     val visiblePage = when {
-        !showDeveloper && (page == SettingsPage.Developer || page == SettingsPage.RunStats) -> SettingsPage.Home
+        !showDeveloper && (page == SettingsPage.Developer || page == SettingsPage.DeviceDirectories || page == SettingsPage.RunStats) -> SettingsPage.Home
         page == SettingsPage.Root && !rootState.suPresent -> SettingsPage.Advanced
         else -> page
     }
@@ -178,23 +201,35 @@ fun SettingsScreen(
             mainModel = roles.main?.let { id -> configs.firstOrNull { it.id == id } }?.let(ProviderConnection::displayName),
             onBack = onBack, onProblem = onProblem, onOpenModels = onOpenModels,
             onOpenPhoneOps = { page = SettingsPage.PhoneOps },
+            onOpenCalls = { page = SettingsPage.Calls },
             wechatState = wechatState, wechatBound = wechat.store.account() != null,
             onOpenWechat = { page = SettingsPage.Wechat },
+            onOpenProactive = { page = SettingsPage.Proactive },
             onOpenAppAccess = { page = SettingsPage.AppAccess },
+            onOpenSmsLogin = { page = SettingsPage.SmsLogin },
             onOpenDuringWork = { page = SettingsPage.DuringWork },
             capsuleMode = capsuleMode, onOpenCapsule = { page = SettingsPage.Capsule },
             onOpenNotifications = { page = SettingsPage.Notifications },
             language = language, onOpenLanguage = { page = SettingsPage.Language },
+            personalStart = personalStart,
+            onPersonalStart = { flags.setPersonalStart(it); personalStart = it },
+            autoArchiveDays = autoArchiveDays,
+            onOpenAutoArchive = { editingAutoArchive = true },
             onOpenMemory = onOpenMemory,
             onOpenBackup = { page = SettingsPage.Backup },
             onOpenRecommendations = { page = SettingsPage.Recommendations },
             onOpenAdvanced = { page = SettingsPage.Advanced },
+            onOpenBrowser = onOpenBrowser,
+            onOpenFiles = onOpenFiles,
+            onOpenPersonal = onOpenPersonal,
+            onOpenPlans = onOpenPlans,
             versionName = BuildConfig.VERSION_NAME, updateVersion = updateVersion, onOpenAbout = onOpenAbout,
         )
         SettingsPage.Advanced -> AdvancedSettingsContent(
             proxy = proxy, proxyNote = proxy?.let { NetProxyCopy.subtitle(it, browserProxy) }, onOpenProxy = { editingProxy = true },
             webSearch = webSearch, onOpenWebSearch = { editingSearch = true },
             sandbox = sandboxStatus, onOpenSandbox = { page = SettingsPage.Sandbox },
+            pluginsCount = pluginRecords.size, onOpenPlugins = { page = SettingsPage.Plugins },
             showRecovery = status.sdkInt >= Prerequisites.MIN_SDK, onOpenRecovery = { page = SettingsPage.Recovery },
             computerAccess = mcpOn, onOpenComputerAccess = { page = SettingsPage.ComputerAccess },
             mcpServersCount = mcpServers?.servers?.value?.size, onOpenMcpServers = { page = SettingsPage.McpServers },
@@ -204,12 +239,14 @@ fun SettingsScreen(
             onQuit = { confirmingQuit = true },
         )
         SettingsPage.AppAccess -> AppAccessScreen(onBack = toHome)
+        SettingsPage.SmsLogin -> SmsLoginSettingsScreen(onBack = toHome)
         SettingsPage.Wechat -> WechatSettingsScreen(wechat, onBack = toHome)
         SettingsPage.Backup -> BackupScreen(onBack = toHome)
         SettingsPage.PhoneOps -> PhoneOpsScreen(
             status, androidRelease, onProblem,
             onRepair = { onFix(Fix.RepairPhoneHelper) }, onUnpair = { onFix(Fix.UnpairPhoneHelper) }, onBack = toHome,
         )
+        SettingsPage.Calls -> CallSettingsScreen((context.applicationContext as com.wangzan101.mika.MikaApp).calls, onBack = toHome)
         SettingsPage.Notifications -> NotificationsScreen(status, onFix = ::fix, onBack = back)
         SettingsPage.DuringWork -> DuringWorkScreen(
             keepScreenOn, onKeepScreenOn = { flags.setKeepScreenOn(it); keepScreenOn = it },
@@ -219,15 +256,25 @@ fun SettingsScreen(
             operatingPace = operatingPace, onOperatingPace = { flags.setOperatingPace(it); operatingPace = it },
             stepLimit = stepLimit, onStepLimit = { flags.setTaskStepLimit(it); stepLimit = it },
             tokenBudget = tokenBudget, onTokenBudget = { flags.setTaskTokenBudget(it); tokenBudget = it },
+            showTaskCost = showTaskCost, onShowTaskCost = { flags.setShowTaskCost(it); showTaskCost = it },
             selfConfig = selfConfig, onSelfConfig = { flags.setSelfConfig(it); selfConfig = it },
+            selfOperate = selfOperate, onSelfOperate = { flags.setSelfOperate(it); selfOperate = it },
+            pipOperate = pipOperate, onPipOperate = { flags.setPipOperate(it); pipOperate = it },
+            externalSchedule = externalSchedule, onExternalSchedule = { flags.setExternalSchedule(it); externalSchedule = it },
         )
         SettingsPage.Language -> LanguageScreen(language, onLanguage = { AppLanguage.set(context, it) }, onBack = toHome)
         SettingsPage.Recommendations -> RecommendedTasksScreen(recommendedTasks, onBack = toHome)
         SettingsPage.Capsule -> CapsuleScreen(
-            capsuleMode, onMode = { flags.setCapsuleMode(it); capsuleMode = it }, onBack = toHome,
+            capsuleMode, onMode = {
+                flags.setCapsuleMode(it)
+                if (CapsuleSetup.needsAccessibility(it, ScreenAccessibility.instance.value != null)) onFix(Fix.OpenAccessibility)
+            }, onBack = toHome,
             idleOpacity = capsuleIdleOpacity,
             onIdleOpacity = { flags.setCapsuleIdleOpacity(it); capsuleIdleOpacity = it },
+            cardScale = capsuleCardScale,
+            onCardScale = { flags.setCapsuleCardScale(it); capsuleCardScale = it },
         )
+        SettingsPage.Plugins -> PluginsScreen(pluginRegistry, onBack = toHome)
         SettingsPage.Sandbox -> SandboxScreen(onBack = toAdvanced)
         SettingsPage.Recovery -> RecoveryScreen(onBack = toAdvanced, onOpenSelfCheck = { page = SettingsPage.SelfCheck })
         SettingsPage.SelfCheck -> SelfCheckScreen(status, onBack = back)
@@ -236,11 +283,19 @@ fun SettingsScreen(
         SettingsPage.Root -> RootScreen(helperRow = status.sdkInt >= Prerequisites.MIN_SDK, onBack = toAdvanced)
         SettingsPage.Developer -> DeveloperOptionsScreen(
             speed, onSpeed = { flags.setSpeed(it); speed = it }, onBack = toAdvanced,
+            deviceFiles = deviceFiles, onDeviceFiles = { flags.setDeviceFiles(it); deviceFiles = it },
             grounding = visionConfig?.let { GroundingSetting(it.model, it.capabilities.groundingVerified) },
             onGrounding = { verified -> scope.launch { withContext(Dispatchers.IO) { store.setVisionGroundingVerified(verified) } } },
             onOpenRunStats = { page = SettingsPage.RunStats },
+            onDeviceDirectories = { page = SettingsPage.DeviceDirectories },
+        )
+        SettingsPage.DeviceDirectories -> DeviceDirectoriesScreen(
+            remember { com.wangzan101.mika.settings.DeviceDirectoryStore.get(context) },
+            remember { com.wangzan101.mika.cap.phone.PhoneServices.of(context).hub },
+            onBack = { page = SettingsPage.Developer },
         )
         SettingsPage.RunStats -> RunStatsScreen(remember { RunStore(context).metrics }, onBack = back)
+        SettingsPage.Proactive -> com.wangzan101.mika.proactive.ProactiveScreen(onBack = back)
     }
 
     if (editingProxy) NetProxyDialog(
@@ -307,6 +362,20 @@ fun SettingsScreen(
             dismissButton = { TextButton({ confirmingQuit = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
+
+    if (editingAutoArchive) {
+        AutoArchiveDialog(
+            current = autoArchiveDays,
+            onPick = { days ->
+                flags.setAutoArchiveDays(days)
+                autoArchiveDays = days
+                editingAutoArchive = false
+                // 选完马上按新设置跑一次,老对话立刻进归档
+                (context.applicationContext as com.wangzan101.mika.MikaApp).autoArchiveNow()
+            },
+            onDismiss = { editingAutoArchive = false },
+        )
+    }
 }
 
 /** 不带状态的设置首页,便于测试。首页只列常用入口,高级能力统一从 [onOpenAdvanced] 进入。 */
@@ -320,10 +389,14 @@ fun SettingsContent(
     onProblem: (Problem) -> Unit,
     onOpenModels: () -> Unit,
     onOpenPhoneOps: () -> Unit = {},
+    onOpenCalls: () -> Unit = {},
     wechatState: WechatConnectionState = WechatConnectionState.NeedsBinding,
     wechatBound: Boolean = false,
     onOpenWechat: () -> Unit = {},
+    /** 「主动能力」的入口,在「微信」和「任务运行」之间。 */
+    onOpenProactive: () -> Unit = {},
     onOpenAppAccess: () -> Unit = {},
+    onOpenSmsLogin: () -> Unit = {},
     onOpenDuringWork: () -> Unit = {},
     /** 悬浮胶囊此刻的选择,写在「悬浮胶囊」一行的右边。 */
     capsuleMode: CapsuleMode = CapsuleMode.DEFAULT,
@@ -336,29 +409,54 @@ fun SettingsContent(
     onOpenBackup: () -> Unit = {},
     onOpenRecommendations: () -> Unit = {},
     onOpenAdvanced: () -> Unit = {},
+    onOpenBrowser: () -> Unit = {},
+    onOpenFiles: () -> Unit = {},
+    onOpenPersonal: () -> Unit = {},
+    onOpenPlans: () -> Unit = {},
     versionName: String = "",
     updateVersion: String? = null,
     onOpenAbout: () -> Unit = {},
+    personalStart: Boolean = false,
+    onPersonalStart: ((Boolean) -> Unit)? = null,
+    /** 自动归档:多久没有新消息的对话自动归档;0 表示关闭。 */
+    autoArchiveDays: Int = 0,
+    onOpenAutoArchive: () -> Unit = {},
 ) {
     val check = Prerequisites.check(status, hasMainModel = mainModel != null)
     PageScaffold(stringResource(R.string.settings_title), onBack) {
         StatusSummary(check, onProblem)
 
-        GroupLabel(stringResource(R.string.settings_basic))
+        GroupLabel(stringResource(R.string.settings_model))
         GroupCard {
             ListRow(MikaIcons.Spark, stringResource(R.string.settings_model), stringResource(R.string.settings_model_sub), first = true, onClick = onOpenModels) {
                 RowValue(mainModel ?: stringResource(R.string.settings_not_set))
                 RowChevron()
             }
-            ListRow(MikaIcons.Phone, stringResource(R.string.settings_phone_ops), onClick = onOpenPhoneOps) {
+        }
+
+        GroupLabel(stringResource(R.string.settings_capabilities))
+        GroupCard {
+            ListRow(MikaIcons.Phone, stringResource(R.string.settings_phone_ops), first = true, onClick = onOpenPhoneOps) {
                 PhoneOpsPill(status)
                 RowChevron()
             }
+            ListRow(MikaIcons.Clock, stringResource(R.string.drawer_plans), onClick = onOpenPlans) { RowChevron() }
+            ListRow(MikaIcons.Globe, stringResource(R.string.drawer_browser), onClick = onOpenBrowser) { RowChevron() }
+            ListRow(MikaIcons.Paperclip, stringResource(R.string.file_library_title), onClick = onOpenFiles) { RowChevron() }
+            ListRow(MikaIcons.Phone, stringResource(R.string.calls_title), stringResource(R.string.calls_entry_sub), onClick = onOpenCalls) { RowChevron() }
             ListRow(MikaIcons.Chats, stringResource(R.string.wechat_title), stringResource(R.string.wechat_settings_sub), onClick = onOpenWechat) {
                 WechatEntryStatus(wechatState, wechatBound)
                 RowChevron()
             }
-            ListRow(MikaIcons.Moon, stringResource(R.string.settings_during_work), stringResource(R.string.settings_during_work_sub), onClick = onOpenDuringWork) { RowChevron() }
+            ListRow(MikaIcons.Ripple, stringResource(R.string.proactive_title), stringResource(R.string.proactive_entry_sub), onClick = onOpenProactive) { RowChevron() }
+            if (personalStart) {
+                ListRow(MikaIcons.Message, stringResource(R.string.drawer_personal), onClick = onOpenPersonal) { RowChevron() }
+            }
+        }
+
+        GroupLabel(stringResource(R.string.settings_preferences))
+        GroupCard {
+            ListRow(MikaIcons.Moon, stringResource(R.string.settings_during_work), stringResource(R.string.settings_during_work_sub), first = true, onClick = onOpenDuringWork) { RowChevron() }
             ListRow(MikaIcons.Message, CapsuleSettingsCopy.TITLE, CapsuleSettingsCopy.SUBTITLE, onClick = onOpenCapsule) {
                 RowValue(CapsuleSettingsCopy.label(capsuleMode))
                 RowChevron()
@@ -372,25 +470,44 @@ fun SettingsContent(
                 RowValue(notifText, notifTone)
                 RowChevron()
             }
+            onPersonalStart?.let { change ->
+                val label = stringResource(R.string.settings_personal_start)
+                ListRow(MikaIcons.Spark, label, stringResource(R.string.settings_personal_start_sub)) {
+                    MikaSwitch(personalStart, change, Modifier.semantics { contentDescription = label })
+                }
+            }
         }
 
-        GroupLabel(stringResource(R.string.settings_privacy))
+        GroupLabel(stringResource(R.string.settings_data))
         GroupCard {
             onOpenMemory?.let {
-                ListRow(MikaIcons.Heart, stringResource(R.string.settings_memory_data), stringResource(R.string.settings_memory_sub), first = true, onClick = it) { RowChevron() }
+                ListRow(MikaIcons.Heart, stringResource(R.string.memory_and_skills), stringResource(R.string.settings_memory_sub), first = true, onClick = it) { RowChevron() }
+            }
+            ListRow(
+                MikaIcons.Archive,
+                stringResource(R.string.settings_auto_archive),
+                stringResource(R.string.settings_auto_archive_sub),
+                first = onOpenMemory == null,
+                onClick = onOpenAutoArchive,
+            ) {
+                RowValue(
+                    if (autoArchiveDays <= 0) stringResource(R.string.state_off)
+                    else pluralStringResource(R.plurals.settings_auto_archive_days, autoArchiveDays, autoArchiveDays),
+                )
+                RowChevron()
             }
             ListRow(
                 MikaIcons.Message,
                 stringResource(R.string.recommendations_title),
                 stringResource(R.string.recommendations_sub),
-                first = onOpenMemory == null,
                 onClick = onOpenRecommendations,
             ) { RowChevron() }
             ListRow(MikaIcons.Shield, stringResource(R.string.appaccess_title), stringResource(R.string.appaccess_row_sub), onClick = onOpenAppAccess) { RowChevron() }
+            ListRow(MikaIcons.Shield, stringResource(R.string.sms_login_title), stringResource(R.string.sms_login_default_off), onClick = onOpenSmsLogin) { RowChevron() }
             ListRow(MikaIcons.Share, stringResource(R.string.backup_title), stringResource(R.string.backup_row_sub), onClick = onOpenBackup) { RowChevron() }
         }
 
-        GroupLabel(stringResource(R.string.settings_other))
+        GroupLabel(stringResource(R.string.settings_advanced))
         GroupCard {
             ListRow(MikaIcons.Wrench, stringResource(R.string.settings_advanced), stringResource(R.string.settings_advanced_sub), first = true, onClick = onOpenAdvanced) { RowChevron() }
         }
@@ -414,6 +531,8 @@ fun AdvancedSettingsContent(
     onOpenWebSearch: () -> Unit = {},
     sandbox: SandboxStatus? = null,
     onOpenSandbox: () -> Unit = {},
+    pluginsCount: Int? = null,
+    onOpenPlugins: () -> Unit = {},
     showRecovery: Boolean = true,
     onOpenRecovery: () -> Unit = {},
     computerAccess: Boolean? = null,
@@ -429,8 +548,35 @@ fun AdvancedSettingsContent(
 ) {
     PageScaffold(stringResource(R.string.settings_advanced), onBack) {
         val sandboxRow = sandbox?.takeIf { it !is SandboxStatus.Unsupported }
-        if (proxy != null || webSearch != null || sandboxRow != null || computerAccess != null || mcpServersCount != null || showRoot) {
-            GroupLabel(stringResource(R.string.settings_connections))
+        if (computerAccess != null || mcpServersCount != null || pluginsCount != null || showRoot) {
+            GroupLabel(stringResource(R.string.settings_extensions))
+            GroupCard {
+                var first = true
+                fun take(): Boolean = first.also { first = false }
+                computerAccess?.let { on ->
+                    ListRow(MikaIcons.Desktop, stringResource(R.string.mcp_title), first = take(), onClick = onOpenComputerAccess) {
+                        RowValue(stringResource(if (on) R.string.state_on else R.string.state_off)); RowChevron()
+                    }
+                }
+                mcpServersCount?.let { count ->
+                    ListRow(MikaIcons.Link, stringResource(R.string.mcp_servers_title), first = take(), onClick = onOpenMcpServers) {
+                        RowValue(stringResource(R.string.mcp_servers_count, count)); RowChevron()
+                    }
+                }
+                pluginsCount?.let {
+                    ListRow(MikaIcons.Spark, stringResource(R.string.plugins_title), first = take(), onClick = onOpenPlugins) {
+                        RowValue(trPlural(R.plurals.plugins_count, it)); RowChevron()
+                    }
+                }
+                if (showRoot) {
+                    ListRow(MikaIcons.Key, PhoneSetupCopy.ROOT_GROUP, PhoneSetupCopy.rootEntryLine(rootCommands), first = take(), onClick = onOpenRoot) {
+                        RowChevron()
+                    }
+                }
+            }
+        }
+        if (proxy != null || webSearch != null) {
+            GroupLabel(stringResource(R.string.settings_network))
             GroupCard {
                 var first = true
                 fun take(): Boolean = first.also { first = false }
@@ -445,25 +591,13 @@ fun AdvancedSettingsContent(
                         RowValue(WebSearchCopy.value(config)); RowChevron()
                     }
                 }
-                if (sandboxRow != null) {
-                    ListRow(MikaIcons.Terminal, stringResource(R.string.settings_sandbox), first = take(), onClick = onOpenSandbox) {
-                        RowValue(sandboxValue(sandboxRow)); RowChevron()
-                    }
-                }
-                computerAccess?.let { on ->
-                    ListRow(MikaIcons.Desktop, stringResource(R.string.mcp_title), first = take(), onClick = onOpenComputerAccess) {
-                        RowValue(stringResource(if (on) R.string.state_on else R.string.state_off)); RowChevron()
-                    }
-                }
-                mcpServersCount?.let { count ->
-                    ListRow(MikaIcons.Link, stringResource(R.string.mcp_servers_title), first = take(), onClick = onOpenMcpServers) {
-                        RowValue(stringResource(R.string.mcp_servers_count, count)); RowChevron()
-                    }
-                }
-                if (showRoot) {
-                    ListRow(MikaIcons.Key, PhoneSetupCopy.ROOT_GROUP, PhoneSetupCopy.rootEntryLine(rootCommands), first = take(), onClick = onOpenRoot) {
-                        RowChevron()
-                    }
+            }
+        }
+        if (sandboxRow != null) {
+            GroupLabel(stringResource(R.string.settings_runtime))
+            GroupCard {
+                ListRow(MikaIcons.Terminal, stringResource(R.string.settings_sandbox), first = true, onClick = onOpenSandbox) {
+                    RowValue(sandboxValue(sandboxRow)); RowChevron()
                 }
             }
         }
