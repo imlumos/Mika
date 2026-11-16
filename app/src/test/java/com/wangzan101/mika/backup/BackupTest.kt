@@ -376,7 +376,7 @@ class BackupTest {
             Regex("""File\(dir,\s*"([^"$]+)"\)""").findAll(text).map { "settings/" + it.groupValues[1] }.toList()
         }.toSet()
         val known = BackupCatalog.items.map { it.path }.toSet() + BackupCatalog.excludedFiles + "settings" + "adb/adbkey.bin"
-        assertEquals("这些文件还没决定备不备份", emptySet<String>(), filesDirNames + settingsNames - known)
+        assertEquals("这些文件还没决定备不备份", emptySet<String>(), (filesDirNames + settingsNames).filter { it !in known && BackupCatalog.itemFor(it) == null }.toSet())
         assertNotNull(BackupCatalog.itemFor("settings/providers.json"))
     }
 

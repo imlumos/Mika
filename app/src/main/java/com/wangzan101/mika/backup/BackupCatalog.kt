@@ -47,6 +47,7 @@ internal object BackupCatalog {
         BackupItem(BackupGroup.Models, "settings/providers.json"),
         BackupItem(BackupGroup.Models, "settings/provider-keys.json", secret = SecretForm.JsonValues("mika-provider-keys")),
         BackupItem(BackupGroup.Models, "settings/chatgpt-host.json"),
+        BackupItem(BackupGroup.Models, "settings/decision-model.bin", secret = SecretForm.WholeFile("mika-decision-key")),
 
         BackupItem(BackupGroup.Connections, MCP),
         BackupItem(BackupGroup.Connections, "settings/mcp-token.bin", secret = SecretForm.WholeFile("mika-mcp-token")),
@@ -97,6 +98,10 @@ internal object BackupCatalog {
         "automatic-updates",
         // API Key 按服务商分键存 Keystore 密文,目录的固定键映射解不开
         "web_search",
+        // 通话:Telecom 登记、通话记录、声音档案和通话指令都跟这台手机和号码走,凭据是 Keystore 密文
+        "mika_call_access", "mika_call_history", "mika_call_settings", "mika_call_voice_profiles", "mika_call_instructions",
+        // 设备目录提示和导入记录里是这台手机上的路径;外部定时只存限流时间戳
+        "device_directory_hints", "device_imports", "external_schedule",
     )
 
     /** 明确不备份的文件:运行中的账本、缓存,和导入时另行重置的审批模式。 */
@@ -107,6 +112,12 @@ internal object BackupCatalog {
         "wechat",
         // 排队中的追问和未发送草稿的临时副本,都属于这台手机上正在进行的事
         "followups-v1.json", "shared-drafts", "library-attachments",
+        // 通话记录(跟上面的通话偏好一起不备份)
+        "call-history-v2.enc",
+        // 短信自动登录的同意、主动能力可读通知的 App 名单都是授权,要用户在这台手机上重新给
+        "sms-login-consent.txt", "proactive-allow.json",
+        // 已安装插件,在新手机上重新安装
+        "plugins",
     )
 
     /** 路径属于哪一项;不在白名单里、或想跳出目录的返回 null。 */
